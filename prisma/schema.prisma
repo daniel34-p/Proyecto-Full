@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  nombre    String
+  rol       String   // "asesor", "admin", "superadmin"
+  activo    Boolean  @default(true)  // Para activar/desactivar usuarios
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  productosCreados   Producto[] @relation("ProductosCreadosPor")
+  productosEditados  Producto[] @relation("ProductosEditadosPor")
+
+  @@index([email])
+  @@index([activo])
+}
+
+model Producto {
+  id              String   @id @default(cuid())
+  proveedor       String
+  referencia      String
+  producto        String
+  cantidad        Int
+  unidades        String
+  costo           String
+  costoReal       Int      @default(0)
+  precioVenta     String
+  codigo          String
+  codigoBarras    String   @unique
+  
+// Tracking de usuarios
+  creadoPorId     String?
+  creadoPor       Usuario?  @relation("ProductosCreadosPor", fields: [creadoPorId], references: [id])
+  editadoPorId    String?
+  editadoPor      Usuario?  @relation("ProductosEditadosPor", fields: [editadoPorId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([proveedor])
+  @@index([producto])
+  @@index([creadoPorId])
+}
