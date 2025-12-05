@@ -104,9 +104,6 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
           fps: 30,
           qrbox: { width: 350, height: 220 },  // Más ancho = mejor para barras
           aspectRatio: 1.777,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
         },
         onScanSuccess,
         () => {}
