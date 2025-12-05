@@ -43,8 +43,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    // Obtener el ID del usuario desde el token o body
-    const userId = body.userId; // Deberás enviarlo desde el frontend
+    const userId = body.userId;
     
     if (!userId) {
       return NextResponse.json(
@@ -58,24 +57,25 @@ export async function POST(request: Request) {
     // Calcular el costo real desencriptado
     const costoReal = desencriptarCosto(body.costo);
     
-    // Generar código de barras único
-    const codigoBarras = await generarCodigoBarrasUnico(body.codigo, prisma);
+    // Generar código de barras único (NUEVO: incluye el costo)
+    const codigoBarras = await generarCodigoBarrasUnico(body.codigo, body.costo, prisma);
     
     console.log('🔢 Código de barras generado:', codigoBarras);
     
     const producto = await prisma.producto.create({
       data: {
-        proveedor: body.proveedor,
-        referencia: body.referencia,
-        producto: body.producto,
+        proveedor: body.proveedor.toUpperCase(),
+        referencia: body.referencia.toUpperCase(),
+        producto: body.producto.toUpperCase(),
         cantidad: parseInt(body.cantidad),
-        unidades: body.unidades,
-        costo: body.costo,
+        unidades: body.unidades.toUpperCase(),
+        costo: body.costo.toUpperCase(),
         costoReal: costoReal,
         precioVenta: body.precioVenta,
         codigo: body.codigo,
         codigoBarras: codigoBarras,
-        creadoPorId: userId, // Guardar quién creó
+        embalaje: body.embalaje ? body.embalaje.toUpperCase() : null,
+        creadoPorId: userId,
       },
       include: {
         creadoPor: {

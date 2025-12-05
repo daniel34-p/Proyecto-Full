@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { formatearCostoReal } from '@/lib/encryption';
 import { CheckCircle2, Edit2, X } from 'lucide-react';
 import {
   Select,
@@ -186,15 +185,9 @@ export function ScannedProductView({
                 <p className="font-semibold text-lg">{producto.producto}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-600">Código</p>
-                  <p className="font-medium">{producto.codigo}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Código de Barras</p>
-                  <p className="font-mono text-xs">{producto.codigoBarras}</p>
-                </div>
+              <div className="text-sm">
+                <p className="text-gray-600">Código</p>
+                <p className="font-medium text-lg">{producto.codigo}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -221,15 +214,9 @@ export function ScannedProductView({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-600">Costo (Código)</p>
-                  <p className="font-mono uppercase">{producto.costo}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Costo Real</p>
-                  <p className="font-medium">${formatearCostoReal(producto.costoReal)}</p>
-                </div>
+              <div className="text-sm">
+                <p className="text-gray-600">Costo (Código)</p>
+                <p className="font-mono uppercase text-lg">{producto.costo}</p>
               </div>
             </div>
           ) : (
@@ -299,7 +286,6 @@ export function ScannedProductView({
                 <p className="text-xs">Proveedor: <span className="font-medium capitalize">{producto.proveedor}</span></p>
                 <p className="text-xs">Referencia: <span className="font-medium">{producto.referencia}</span></p>
                 <p className="text-xs">Unidades: <span className="font-medium">{producto.unidades}</span></p>
-                <p className="text-xs">Código de Barras: <span className="font-mono">{producto.codigoBarras}</span></p>
               </div>
             </div>
           )}

@@ -13,6 +13,16 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   createdAt: string;
+  creadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
+  editadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
 }
 
 /**
@@ -55,6 +65,7 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
       }
 
       fila['Precio de Venta'] = parseFloat(producto.precioVenta);
+      fila['Registrado por'] = producto.creadoPor?.nombre || 'Sin información';
       fila['Fecha de Registro'] = new Date(producto.createdAt).toLocaleDateString('es-CO');
 
       return fila;
@@ -81,6 +92,7 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
         'Costo Real': '',
         'Valor Total Costo': totalValorCosto,
         'Precio de Venta': '',
+        'Registrado por': '',
         'Fecha de Registro': '',
       });
     }
@@ -105,6 +117,7 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
     }
 
     anchosColumnas.push({ wch: 18 }); // Precio de Venta
+    anchosColumnas.push({ wch: 25 }); // Registrado por
     anchosColumnas.push({ wch: 15 }); // Fecha de Registro
 
     hoja['!cols'] = anchosColumnas;
@@ -171,7 +184,33 @@ function calcularResumenMejorado(
     { 'Descripción': '═══════════════════════════════', 'Valor': '═════════════════' },
     { 'Descripción': 'GRAN TOTAL DE INVENTARIO', 'Valor': `$${valorTotalGeneral.toLocaleString('es-CO', { minimumFractionDigits: 2 })}` },
     { 'Descripción': 'Total de productos en sistema', 'Valor': totalProductos },
+    { 'Descripción': '', 'Valor': '' },
+    { 'Descripción': '', 'Valor': '' },
   );
+
+  // Agregar resumen de productos por usuario
+  resumen.push(
+    { 'Descripción': 'PRODUCTOS POR USUARIO', 'Valor': '' },
+    { 'Descripción': '', 'Valor': '' }
+  );
+
+  const productosPorUsuario = productos.reduce((acc, p) => {
+    const nombreUsuario = p.creadoPor?.nombre || 'Sin información';
+    if (!acc[nombreUsuario]) {
+      acc[nombreUsuario] = 0;
+    }
+    acc[nombreUsuario]++;
+    return acc;
+  }, {} as Record<string, number>);
+
+  Object.entries(productosPorUsuario)
+    .sort((a, b) => b[1] - a[1]) // Ordenar por cantidad descendente
+    .forEach(([usuario, cantidad]) => {
+      resumen.push({
+        'Descripción': `  • ${usuario}`,
+        'Valor': `${cantidad} producto${cantidad !== 1 ? 's' : ''}`
+      });
+    });
 
   return resumen;
 }
@@ -186,4 +225,4 @@ export function exportarProductosSeleccionados(
 ) {
   const productosSeleccionados = productos.filter(p => idsSeleccionados.includes(p.id));
   exportarProductosAExcel(productosSeleccionados, incluirCostoReal);
-}
+};

@@ -32,7 +32,6 @@ export async function GET(
 }
 
 // PUT - Actualizar un producto
-// PUT - Actualizar un producto
 export async function PUT(
   request: Request,
   context: { params: Promise<{ id: string }> }
@@ -41,7 +40,6 @@ export async function PUT(
     const { id } = await context.params;
     const body = await request.json();
     
-    // Obtener el ID del usuario desde el body
     const userId = body.userId;
     
     if (!userId) {
@@ -57,16 +55,17 @@ export async function PUT(
     const producto = await prisma.producto.update({
       where: { id },
       data: {
-        proveedor: body.proveedor,
-        referencia: body.referencia,
-        producto: body.producto,
+        proveedor: body.proveedor.toUpperCase(),
+        referencia: body.referencia.toUpperCase(),
+        producto: body.producto.toUpperCase(),
         cantidad: parseInt(body.cantidad),
-        unidades: body.unidades,
-        costo: body.costo,
+        unidades: body.unidades.toUpperCase(),
+        costo: body.costo.toUpperCase(),
         costoReal: costoReal,
         precioVenta: body.precioVenta,
         codigo: body.codigo,
-        editadoPorId: userId, // Guardar quién editó
+        embalaje: body.embalaje ? body.embalaje.toUpperCase() : null,
+        editadoPorId: userId,
       },
       include: {
         creadoPor: {

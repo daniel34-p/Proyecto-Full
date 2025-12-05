@@ -37,8 +37,9 @@ model Producto {
   precioVenta     String
   codigo          String
   codigoBarras    String   @unique
+  embalaje        String?  // Nuevo campo opcional
   
-// Tracking de usuarios
+  // Tracking de usuarios
   creadoPorId     String?
   creadoPor       Usuario?  @relation("ProductosCreadosPor", fields: [creadoPorId], references: [id])
   editadoPorId    String?

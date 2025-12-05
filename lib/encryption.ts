@@ -1,36 +1,20 @@
-// Mapeo de letras a números
+// Mapeo personalizado de letras a números
 const ENCRYPTION_MAP: Record<string, string> = {
-  'A': '1',
-  'B': '2',
-  'C': '3',
-  'D': '4',
-  'E': '5',
-  'F': '6',
-  'G': '7',
-  'H': '8',
-  'I': '9',
-  'J': '0',
-  'K': '1',
-  'L': '2',
-  'M': '3',
-  'N': '4',
-  'O': '5',
-  'P': '6',
-  'Q': '7',
-  'R': '8',
-  'S': '9',
-  'T': '0',
+  'H': '0',
   'U': '1',
-  'V': '2',
-  'W': '3',
-  'X': '4',
-  'Y': '5',
-  'Z': '6',
+  'B': '2',
+  'I': '3',
+  'E': '4',
+  'R': '5',
+  'A': '6',
+  'M': '7',
+  'O': '8',
+  'S': '9',
 };
 
 /**
  * Desencripta un costo codificado en letras a su valor numérico
- * Ejemplo: "XDF" -> "446" -> 446
+ * Ejemplo: "HUB" -> "012" -> 12
  */
 export function desencriptarCosto(costoEncriptado: string): number {
   if (!costoEncriptado) return 0;
@@ -48,12 +32,12 @@ export function desencriptarCosto(costoEncriptado: string): number {
 }
 
 /**
- * Valida que el costo solo contenga letras válidas
+ * Valida que el costo solo contenga letras válidas del mapeo
  */
 export function validarCostoEncriptado(costo: string): boolean {
   if (!costo) return false;
   const costoUpper = costo.toUpperCase().trim();
-  return /^[A-Z]+$/.test(costoUpper);
+  return /^[HUBIERAM OS]+$/.test(costoUpper);
 }
 
 /**
@@ -64,4 +48,14 @@ export function formatearCostoReal(costoReal: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * Obtiene la tabla de encriptación para mostrar al usuario
+ */
+export function obtenerTablaEncriptacion(): Array<{ letra: string; valor: string }> {
+  return Object.entries(ENCRYPTION_MAP).map(([letra, valor]) => ({
+    letra,
+    valor,
+  }));
 }
