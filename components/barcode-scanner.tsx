@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Loader2, Camera, X, Smartphone, Flashlight, FlashlightOff } from 'lucide-react';
+import { Loader2, Camera, X, Smartphone } from 'lucide-react';
 
 interface Producto {
   id: string;
@@ -107,16 +107,6 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true,
           },
-          videoConstraints: {
-            facingMode: 'environment',
-            focusMode: 'continuous',
-            advanced: [
-              { focusMode: 'continuous' },
-              { exposureMode: 'continuous' },
-              { zoom: 2 },
-              { torch: torchOn },
-            ],
-          },
         },
         onScanSuccess,
         () => {}
@@ -173,9 +163,9 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
   };
 
   const toggleTorch = async () => {
-    setTorchOn(prev => !prev);
-    await stopCamera();
-    setTimeout(() => initCamera(), 200);
+    // Nota: El control de linterna requiere acceso directo al MediaStream
+    // Por ahora, esta funcionalidad está deshabilitada debido a limitaciones de TypeScript
+    alert('La función de linterna no está disponible en esta versión');
   };
 
   const handleClose = async () => {
@@ -238,11 +228,6 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
 
           {/* BOTONES */}
           <div className="flex gap-2">
-            <Button variant="outline" className="w-full" onClick={toggleTorch}>
-              {torchOn ? <FlashlightOff className="h-4 w-4 mr-2" /> : <Flashlight className="h-4 w-4 mr-2" />}
-              {torchOn ? 'Apagar linterna' : 'Encender linterna'}
-            </Button>
-
             <Button variant="outline" className="w-full" onClick={handleClose}>
               <X className="h-4 w-4 mr-2" />
               Cancelar
