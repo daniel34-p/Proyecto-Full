@@ -4,22 +4,25 @@ import { generarCodigoBarrasUnico } from '../lib/barcode-generator';
 const prisma = new PrismaClient();
 
 async function main() {
-  // Obtener todos los productos sin código de barras
+
   const productos = await prisma.producto.findMany({
     where: {
       OR: [
         { codigoBarras: '' },
-        { codigoBarras: null },
-      ]
-    }
+        { codigoBarras: { equals: undefined } },
+      ],
+    },
   });
 
   console.log(`📦 Encontrados ${productos.length} productos sin código de barras`);
 
-  // Generar código de barras para cada producto
   for (const producto of productos) {
-    const codigoBarras = await generarCodigoBarrasUnico(producto.codigo, prisma);
-    
+    const codigoBarras = await generarCodigoBarrasUnico(
+      producto.codigo,
+      producto.costo,
+      prisma
+    );
+
     await prisma.producto.update({
       where: { id: producto.id },
       data: { codigoBarras },

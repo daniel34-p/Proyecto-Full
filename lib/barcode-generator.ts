@@ -1,12 +1,7 @@
-/**
- * Genera un código de barras único
- * Formato NUEVO: 7 letras aleatorias + costo (letras) + código del producto
- * Ejemplo: codigo "103" + costo "HUB" → "A2G5PQR" + "HUB" + "103" = "A2G5PQRHUB103"
- */
 export function generarCodigoBarras(codigo: string, costo: string): string {
   const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   
-  // 1. Generar 7 letras aleatorias
+  // 1. Generar 6 letras aleatorias
   let codigoBarras = '';
   for (let i = 0; i < 6; i++) {
     const randomIndex = Math.floor(Math.random() * letras.length);
