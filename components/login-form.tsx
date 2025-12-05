@@ -81,14 +81,6 @@ export function LoginForm() {
               {isLoading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </Button>
           </form>
-
-          <div className="mt-6 p-4 bg-gray-50 rounded-md">
-            <p className="text-xs font-semibold text-gray-700 mb-2">
-              Usuarios de prueba:
-            </p>
-            <div className="space-y-1 text-xs text-gray-600">
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

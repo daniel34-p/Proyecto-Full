@@ -43,7 +43,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | null>(null);
-  const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
+  const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA', "EKA", 'COAST CADENA', 'INALSI', 'NEGOFUR', 'INSUMOS JET', 'GLOBAL', 'RECUDIR', 'AMERICANTEX', 'HILOS Y LANAS', 'DISATEX', 'PREMATEX', 'RAVENA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
   const isEditing = !!productoToEdit;
 
