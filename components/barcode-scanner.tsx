@@ -24,6 +24,18 @@ interface Producto {
   precioVenta: string;
   codigo: string;
   codigoBarras: string;
+  embalaje?: string;
+  createdAt: string;
+  creadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
+  editadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
 }
 
 interface BarcodeScannerProps {
