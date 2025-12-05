@@ -87,8 +87,6 @@ export function LoginForm() {
               Usuarios de prueba:
             </p>
             <div className="space-y-1 text-xs text-gray-600">
-              <p><strong>Admin:</strong> admin@inventario.com / admin123</p>
-              <p><strong>Asesor:</strong> asesor@inventario.com / asesor123</p>
             </div>
           </div>
         </CardContent>

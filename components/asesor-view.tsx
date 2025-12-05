@@ -106,8 +106,7 @@ export function AsesorView() {
           </CardHeader>
           <CardContent className="text-xs sm:text-sm text-gray-600 space-y-2">
             <p>• Completa todos los campos marcados con *</p>
-            <p>• El código debe ser único para cada producto</p>
-            <p>• El costo debe ingresarse en formato de código (solo letras)</p>
+            <p>• El costo debe ingresarse en formato de (solo letras)</p>
             <p>• Verifica los datos antes de guardar</p>
           </CardContent>
         </Card>
