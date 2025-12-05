@@ -9,6 +9,32 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera } from 'lucide-react';
 
+interface Producto {
+  id: string;
+  proveedor: string;
+  referencia: string;
+  producto: string;
+  cantidad: number;
+  unidades: string;
+  costo: string;
+  costoReal: number;
+  precioVenta: string;
+  codigo: string;
+  codigoBarras: string;
+  embalaje?: string;
+  createdAt: string;
+  creadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
+  editadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
+}
+
 export function AsesorView() {
   const { user, logout } = useAuth();
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
@@ -61,7 +87,7 @@ export function AsesorView() {
       </header>
 
       {/* Contenido */}
-            <main className="max-w-2xl mx-auto p-4 sm:p-6 lg:p-8">
+      <main className="max-w-2xl mx-auto p-4 sm:p-6 lg:p-8">
         {showSuccessMessage && (
           <Card className="mb-4 sm:mb-6 border-green-200 bg-green-50">
             <CardContent className="pt-6">
@@ -86,6 +112,7 @@ export function AsesorView() {
           </CardContent>
         </Card>
       </main>
+
       {/* Escáner de código de barras */}
       <BarcodeScanner
         isOpen={scannerOpen}
