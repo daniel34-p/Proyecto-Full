@@ -175,7 +175,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
               <Input
                 id="referencia"
                 {...register('referencia')}
-                placeholder="Ej: REF-001"
+                placeholder="Ej: 2MM"
               />
               {errors.referencia && (
                 <p className="text-sm text-red-500">{errors.referencia.message}</p>
@@ -188,7 +188,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
               <Input
                 id="producto"
                 {...register('producto')}
-                placeholder="Nombre del producto"
+                placeholder="Ej: COLA DE RATON"
               />
               {errors.producto && (
                 <p className="text-sm text-red-500">{errors.producto.message}</p>
@@ -202,7 +202,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
                 id="cantidad"
                 type="number"
                 {...register('cantidad')}
-                placeholder="0"
+                placeholder="Ej: 100"
               />
               {errors.cantidad && (
                 <p className="text-sm text-red-500">{errors.cantidad.message}</p>
@@ -249,7 +249,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
               <Input
                 id="costo"
                 {...register('costo')}
-                placeholder="X"
+                placeholder="Ej: HUB"
                 className="uppercase"
               />
               {errors.costo && (
@@ -263,7 +263,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
               <Input
                 id="precioVenta"
                 {...register('precioVenta')}
-                placeholder="0.00"
+                placeholder="Ej: 15000"
               />
               {errors.precioVenta && (
                 <p className="text-sm text-red-500">{errors.precioVenta.message}</p>
@@ -272,12 +272,12 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
 
             {/* Código */}
             <div className="space-y-2">
-              <Label htmlFor="codigo">Código *</Label>
+              <Label htmlFor="codigo">Código Producto *</Label>
               <Input
                 id="codigo"
                 type="number"
                 {...register('codigo')}
-                placeholder="Ej: 123"
+                placeholder="Ej: 919"
               />
               {errors.codigo && (
                 <p className="text-sm text-red-500">{errors.codigo.message}</p>
@@ -291,7 +291,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
               <Input
                 id="embalaje"
                 {...register('embalaje')}
-                placeholder="Ej: Caja, Paquete, Bolsa (Opcional)"
+                placeholder="Ej: 131 MTS"
               />
               {errors.embalaje && (
                 <p className="text-sm text-red-500">{errors.embalaje.message}</p>
