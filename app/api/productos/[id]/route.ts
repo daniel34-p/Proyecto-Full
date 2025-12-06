@@ -52,13 +52,16 @@ export async function PUT(
     // Calcular el costo real desencriptado
     const costoReal = desencriptarCosto(body.costo);
     
+    // Convertir cantidad a float
+    const cantidad = parseFloat(body.cantidad);
+    
     const producto = await prisma.producto.update({
       where: { id },
       data: {
         proveedor: body.proveedor.toUpperCase(),
         referencia: body.referencia.toUpperCase(),
         producto: body.producto.toUpperCase(),
-        cantidad: parseInt(body.cantidad),
+        cantidad: cantidad,
         unidades: body.unidades.toUpperCase(),
         costo: body.costo.toUpperCase(),
         costoReal: costoReal,

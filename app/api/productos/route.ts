@@ -57,17 +57,20 @@ export async function POST(request: Request) {
     // Calcular el costo real desencriptado
     const costoReal = desencriptarCosto(body.costo);
     
-    // Generar código de barras único (NUEVO: incluye el costo)
+    // Generar código de barras único
     const codigoBarras = await generarCodigoBarrasUnico(body.codigo, body.costo, prisma);
     
     console.log('🔢 Código de barras generado:', codigoBarras);
+    
+    // Convertir cantidad a float
+    const cantidad = parseFloat(body.cantidad);
     
     const producto = await prisma.producto.create({
       data: {
         proveedor: body.proveedor.toUpperCase(),
         referencia: body.referencia.toUpperCase(),
         producto: body.producto.toUpperCase(),
-        cantidad: parseInt(body.cantidad),
+        cantidad: cantidad,
         unidades: body.unidades.toUpperCase(),
         costo: body.costo.toUpperCase(),
         costoReal: costoReal,
