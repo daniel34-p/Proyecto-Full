@@ -472,7 +472,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
                     <Input
                       id="costo"
                       {...register('costo')}
-                      placeholder="X"
+                      placeholder="HUB"
                       className="uppercase"
                     />
                     {errors.costo && (
