@@ -37,14 +37,15 @@ interface ProductoFormProps {
   onSuccess: () => void;
   productoToEdit?: Producto | null;
   onCancelEdit?: () => void;
+  mostrarBusqueda?: boolean; // Nuevo prop para controlar si se muestra la búsqueda
 }
 
-export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: ProductoFormProps) {
+export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarBusqueda = false }: ProductoFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | null>(null);
-  const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA', "EKA", 'COAST CADENA', 'INALSI', 'NEGOFUR', 'INSUMOS JET', 'GLOBAL', 'RECUDIR', 'AMERICANTEX', 'HILOS Y LANAS', 'DISATEX', 'PREMATEX', 'RAVENA']);
-  const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'MILLARES', 'ROLLOS']);
+  const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
+  const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
   const isEditing = !!productoToEdit;
 
   // Estados para búsqueda por referencia
@@ -317,6 +318,9 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
                 <Label htmlFor="searchRef" className="text-blue-900 font-semibold mb-2 block">
                   🔍 Buscar por Referencia
                 </Label>
+                <p className="text-xs text-blue-700 mb-3">
+                  Si el producto ya existe, podrás agregar cantidad directamente
+                </p>
                 <div className="flex gap-2">
                   <Input
                     id="searchRef"
@@ -468,11 +472,11 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
 
                   {/* Costo */}
                   <div className="space-y-2">
-                    <Label htmlFor="costo">X (Letras) *</Label>
+                    <Label htmlFor="costo">Costo (Código) *</Label>
                     <Input
                       id="costo"
                       {...register('costo')}
-                      placeholder="HUB"
+                      placeholder="X"
                       className="uppercase"
                     />
                     {errors.costo && (
@@ -521,8 +525,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
                     )}
                   </div>
 
-                  {/* Error */}
-                  {error && (
+                  {/* Error general del formulario (solo si no es error de búsqueda) */}
+                  {error && (mostrarBusqueda ? modoAgregar : true) && (
                     <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
                       {error}
                     </div>
