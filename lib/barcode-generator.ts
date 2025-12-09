@@ -1,9 +1,9 @@
 export function generarCodigoBarras(codigo: string, costo: string): string {
   const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   
-  // 1. Generar 6 letras aleatorias
+  // 1. Generar 5 letras aleatorias
   let codigoBarras = '';
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 5; i++) {
     const randomIndex = Math.floor(Math.random() * letras.length);
     codigoBarras += letras[randomIndex];
   }

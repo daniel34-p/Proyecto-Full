@@ -468,7 +468,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit }: Produc
 
                   {/* Costo */}
                   <div className="space-y-2">
-                    <Label htmlFor="costo">Costo (Código) *</Label>
+                    <Label htmlFor="costo">X (Letras) *</Label>
                     <Input
                       id="costo"
                       {...register('costo')}
