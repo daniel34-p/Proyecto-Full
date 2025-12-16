@@ -318,11 +318,11 @@ export function BarcodeDisplay({
         </div>
 
         <div className="flex gap-2 justify-end mt-4">
-          <Button variant="outline" onClick={handleDownload} size="sm">
-            💾 Descargar PNG
-          </Button>
           <Button onClick={handlePrint} size="sm">
             🖨️ Imprimir
+          </Button>
+          <Button variant="outline" onClick={handleDownload} size="sm">
+            💾 Descargar PNG
           </Button>
         </div>
       </DialogContent>

@@ -45,7 +45,9 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const [error, setError] = useState('');
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
-  const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
+  const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'ROLLOS']);
+  const [selectedProveedor, setSelectedProveedor] = useState('');
+  const [selectedUnidades, setSelectedUnidades] = useState('');
   const isEditing = !!productoToEdit;
 
   // Estados para búsqueda por referencia
@@ -91,8 +93,12 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       setValue('precioVenta', productoToEdit.precioVenta);
       setValue('codigo', productoToEdit.codigo);
       setValue('embalaje', productoToEdit.embalaje || '');
+      setSelectedProveedor(productoToEdit.proveedor);
+      setSelectedUnidades(productoToEdit.unidades);
     } else {
       reset();
+      setSelectedProveedor('');
+      setSelectedUnidades('');
     }
   }, [productoToEdit, setValue, reset]);
 
@@ -232,6 +238,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       reset();
       onSuccess();
       if (onCancelEdit) onCancelEdit();
+      setSelectedProveedor('');
+      setSelectedUnidades('');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -360,8 +368,11 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                     <Label htmlFor="proveedor">Proveedor *</Label>
                     <div className="flex gap-2">
                       <Select
-                        onValueChange={(value) => setValue('proveedor', value)}
-                        defaultValue={productoToEdit?.proveedor}
+                        value={selectedProveedor}
+                        onValueChange={(value) => {
+                          setValue('proveedor', value);
+                          setSelectedProveedor(value);
+                        }}
                       >
                         <SelectTrigger className="flex-1">
                           <SelectValue placeholder="Selecciona un proveedor" />
@@ -441,8 +452,11 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                     <Label htmlFor="unidades">Unidades *</Label>
                     <div className="flex gap-2">
                       <Select
-                        onValueChange={(value) => setValue('unidades', value)}
-                        defaultValue={productoToEdit?.unidades}
+                        value={selectedUnidades}
+                        onValueChange={(value) => {
+                          setValue('unidades', value);
+                          setSelectedUnidades(value);
+                        }}
                       >
                         <SelectTrigger className="flex-1">
                           <SelectValue placeholder="Selecciona unidad" />
@@ -471,8 +485,9 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                   </div>
 
                   {/* Costo */}
+                  
                   <div className="space-y-2">
-                    <Label htmlFor="costo">Costo (Código) *</Label>
+                    <Label htmlFor="costo">X (Letras) *</Label>
                     <Input
                       id="costo"
                       {...register('costo')}

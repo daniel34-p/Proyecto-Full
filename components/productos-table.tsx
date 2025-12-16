@@ -22,7 +22,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 interface Producto {
   id: string;
@@ -60,6 +67,9 @@ const ITEMS_POR_PAGINA = 13;
 
 export function ProductosTable({ productos, onDelete, onEdit }: ProductosTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [filtroProveedor, setFiltroProveedor] = useState('todos');
+  const [filtroUnidades, setFiltroUnidades] = useState('todos');
+  const [filtroCreadoPor, setFiltroCreadoPor] = useState('todos');
   const { isAdmin } = useAuth();
   const [barcodeModal, setBarcodeModal] = useState<{
     isOpen: boolean;
@@ -81,16 +91,21 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     productos = [];
   }
 
-  // Filtrar productos según el término de búsqueda
+  // Filtrar productos según el término de búsqueda y filtros
   const filteredProductos = productos.filter((producto) => {
     const search = searchTerm.toLowerCase();
-    return (
+    const matchSearch = 
       producto.codigo.toLowerCase().includes(search) ||
       producto.producto.toLowerCase().includes(search) ||
       producto.referencia.toLowerCase().includes(search) ||
       producto.proveedor.toLowerCase().includes(search) ||
-      (producto.embalaje && producto.embalaje.toLowerCase().includes(search))
-    );
+      (producto.embalaje && producto.embalaje.toLowerCase().includes(search));
+    
+    const matchProveedor = filtroProveedor === 'todos' || producto.proveedor === filtroProveedor;
+    const matchUnidades = filtroUnidades === 'todos' || producto.unidades === filtroUnidades;
+    const matchCreadoPor = filtroCreadoPor === 'todos' || producto.creadoPor?.nombre === filtroCreadoPor;
+    
+    return matchSearch && matchProveedor && matchUnidades && matchCreadoPor;
   });
 
   // Calcular paginación
@@ -99,11 +114,45 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
   const indiceFin = indiceInicio + ITEMS_POR_PAGINA;
   const productosEnPagina = filteredProductos.slice(indiceInicio, indiceFin);
 
-  // Resetear a página 1 cuando cambia la búsqueda
+  // Resetear a página 1 cuando cambia la búsqueda o filtros
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
     setPaginaActual(1);
   };
+
+  const handleFiltroProveedorChange = (value: string) => {
+    setFiltroProveedor(value);
+    setPaginaActual(1);
+  };
+
+  const handleFiltroUnidadesChange = (value: string) => {
+    setFiltroUnidades(value);
+    setPaginaActual(1);
+  };
+
+  const handleFiltroCreadoPorChange = (value: string) => {
+    setFiltroCreadoPor(value);
+    setPaginaActual(1);
+  };
+
+  // Obtener lista única de proveedores, unidades y usuarios
+  const proveedoresUnicos = Array.from(new Set(productos.map(p => p.proveedor))).sort();
+  const unidadesUnicas = Array.from(new Set(productos.map(p => p.unidades))).sort();
+  const usuariosUnicos = Array.from(
+    new Set(productos.map(p => p.creadoPor?.nombre).filter(Boolean))
+  ).sort() as string[];
+
+  // Función para limpiar todos los filtros
+  const limpiarFiltros = () => {
+    setSearchTerm('');
+    setFiltroProveedor('todos');
+    setFiltroUnidades('todos');
+    setFiltroCreadoPor('todos');
+    setPaginaActual(1);
+  };
+
+  // Verificar si hay filtros activos
+  const hayFiltrosActivos = searchTerm !== '' || filtroProveedor !== 'todos' || filtroUnidades !== 'todos' || filtroCreadoPor !== 'todos';
 
   const irAPagina = (pagina: number) => {
     setPaginaActual(pagina);
@@ -128,15 +177,92 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <CardTitle>Lista de Productos ({filteredProductos.length})</CardTitle>
-          <div className="w-full sm:w-64">
-            <Input
-              placeholder="Buscar por código, nombre, referencia..."
-              value={searchTerm}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full"
-            />
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle>Lista de Productos ({filteredProductos.length})</CardTitle>
+          </div>
+          
+          {/* Filtros y búsqueda */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Búsqueda */}
+              <div className="md:col-span-1">
+                <Input
+                  placeholder="Buscar por código, nombre..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              
+              {/* Filtro Proveedor */}
+              <div className="md:col-span-1">
+                <Select value={filtroProveedor} onValueChange={handleFiltroProveedorChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filtrar por proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los proveedores</SelectItem>
+                    {proveedoresUnicos.map((prov) => (
+                      <SelectItem key={prov} value={prov} className="capitalize">
+                        {prov}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Filtro Unidades */}
+              <div className="md:col-span-1">
+                <Select value={filtroUnidades} onValueChange={handleFiltroUnidadesChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filtrar por unidad" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todas las unidades</SelectItem>
+                    {unidadesUnicas.map((unidad) => (
+                      <SelectItem key={unidad} value={unidad} className="capitalize">
+                        {unidad}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro Creado Por - Solo visible para admins */}
+              {isAdmin && (
+                <div className="md:col-span-1">
+                  <Select value={filtroCreadoPor} onValueChange={handleFiltroCreadoPorChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Filtrar por usuario" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los usuarios</SelectItem>
+                      {usuariosUnicos.map((usuario) => (
+                        <SelectItem key={usuario} value={usuario}>
+                          {usuario}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            
+            {/* Botón limpiar filtros */}
+            {hayFiltrosActivos && (
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={limpiarFiltros}
+                  className="text-xs"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Limpiar filtros
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>

@@ -40,7 +40,7 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
       if (tipo === 'proveedores') {
         setOpciones(['BODEGA', 'ALEA']);
       } else {
-        setOpciones(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
+        setOpciones(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'ROLLOS']);
       }
     }
   };
