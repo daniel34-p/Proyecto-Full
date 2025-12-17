@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useState, useEffect } from 'react';
-import { Plus, Search, X, PackagePlus } from 'lucide-react';
+import { Plus, Search, X, PackagePlus, ChevronRight } from 'lucide-react';
 import { OpcionesConfig } from '@/components/opciones-config';
 
 interface Producto {
@@ -45,7 +45,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const [error, setError] = useState('');
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
-  const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'ROLLOS']);
+  const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
   const [selectedProveedor, setSelectedProveedor] = useState('');
   const [selectedUnidades, setSelectedUnidades] = useState('');
   const isEditing = !!productoToEdit;
@@ -53,7 +53,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   // Estados para búsqueda por referencia
   const [searchRef, setSearchRef] = useState('');
   const [searching, setSearching] = useState(false);
-  const [productoEncontrado, setProductoEncontrado] = useState<Producto | null>(null);
+  const [productosEncontrados, setProductosEncontrados] = useState<Producto[]>([]);
+  const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [cantidadAgregar, setCantidadAgregar] = useState('');
   const [modoAgregar, setModoAgregar] = useState(false);
 
@@ -111,7 +112,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
 
     setSearching(true);
     setError('');
-    setProductoEncontrado(null);
+    setProductosEncontrados([]);
+    setProductoSeleccionado(null);
 
     try {
       const token = localStorage.getItem('token');
@@ -126,13 +128,23 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       }
 
       const productos = await response.json();
-      const encontrado = productos.find(
+      const encontrados = productos.filter(
         (p: Producto) => p.referencia.toUpperCase() === searchRef.toUpperCase().trim()
       );
 
-      if (encontrado) {
-        setProductoEncontrado(encontrado);
-        setModoAgregar(true);
+      if (encontrados.length > 0) {
+        setProductosEncontrados(encontrados);
+        
+        // Si solo hay uno, seleccionarlo automáticamente
+        if (encontrados.length === 1) {
+          setProductoSeleccionado(encontrados[0]);
+          setModoAgregar(true);
+        }
+        // Si hay múltiples, mostrar lista para elegir
+        else {
+          setModoAgregar(false); // Mostrar lista de selección primero
+        }
+        
         setCantidadAgregar('');
       } else {
         setError(`No se encontró ningún producto con la referencia "${searchRef}"`);
@@ -147,7 +159,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
 
   // Agregar cantidad al producto encontrado
   const agregarCantidad = async () => {
-    if (!productoEncontrado) return;
+    if (!productoSeleccionado) return;
     if (!cantidadAgregar || parseFloat(cantidadAgregar) <= 0) {
       setError('Ingresa una cantidad válida para agregar');
       return;
@@ -157,25 +169,25 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
     setError('');
 
     try {
-      const nuevaCantidad = parseFloat(productoEncontrado.cantidad.toString()) + parseFloat(cantidadAgregar);
+      const nuevaCantidad = parseFloat(productoSeleccionado.cantidad.toString()) + parseFloat(cantidadAgregar);
 
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/productos/${productoEncontrado.id}`, {
+      const response = await fetch(`/api/productos/${productoSeleccionado.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({
-          proveedor: productoEncontrado.proveedor,
-          referencia: productoEncontrado.referencia,
-          producto: productoEncontrado.producto,
+          proveedor: productoSeleccionado.proveedor,
+          referencia: productoSeleccionado.referencia,
+          producto: productoSeleccionado.producto,
           cantidad: nuevaCantidad.toString(),
-          unidades: productoEncontrado.unidades,
-          costo: productoEncontrado.costo,
-          precioVenta: productoEncontrado.precioVenta,
-          codigo: productoEncontrado.codigo,
-          embalaje: productoEncontrado.embalaje,
+          unidades: productoSeleccionado.unidades,
+          costo: productoSeleccionado.costo,
+          precioVenta: productoSeleccionado.precioVenta,
+          codigo: productoSeleccionado.codigo,
+          embalaje: productoSeleccionado.embalaje,
           userId: JSON.parse(localStorage.getItem('user') || '{}').id,
         }),
       });
@@ -187,7 +199,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
 
       // Limpiar formulario de búsqueda
       setSearchRef('');
-      setProductoEncontrado(null);
+      setProductosEncontrados([]);
+      setProductoSeleccionado(null);
       setCantidadAgregar('');
       setModoAgregar(false);
       
@@ -202,7 +215,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   // Cancelar modo agregar
   const cancelarAgregar = () => {
     setSearchRef('');
-    setProductoEncontrado(null);
+    setProductosEncontrados([]);
+    setProductoSeleccionado(null);
     setCantidadAgregar('');
     setModoAgregar(false);
     setError('');
@@ -256,18 +270,67 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* MODO AGREGAR CANTIDAD */}
-          {modoAgregar && productoEncontrado ? (
+          {/* LISTA DE SELECCIÓN - Cuando hay múltiples productos */}
+          {productosEncontrados.length > 1 && !modoAgregar ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <h3 className="font-semibold text-blue-900 mb-2">
+                  Se encontraron {productosEncontrados.length} productos con la referencia "{searchRef}"
+                </h3>
+                <p className="text-sm text-blue-700">Selecciona el producto al que quieres agregar cantidad:</p>
+              </div>
+
+              {/* Lista de productos encontrados */}
+              <div className="space-y-2">
+                {productosEncontrados.map((producto) => (
+                  <button
+                    key={producto.id}
+                    onClick={() => {
+                      setProductoSeleccionado(producto);
+                      setModoAgregar(true);
+                    }}
+                    className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-900">{producto.producto}</p>
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-sm text-gray-600">
+                          <p><strong>Código:</strong> {producto.codigo}</p>
+                          <p><strong>Proveedor:</strong> {producto.proveedor}</p>
+                          <p><strong>Cantidad:</strong> {producto.cantidad} {producto.unidades}</p>
+                          {producto.embalaje && <p><strong>Embalaje:</strong> {producto.embalaje}</p>}
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-gray-400" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Botón cancelar */}
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={cancelarAgregar}
+                className="w-full"
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancelar
+              </Button>
+            </div>
+          ) : /* MODO AGREGAR CANTIDAD */
+          modoAgregar && productoSeleccionado ? (
             <div className="space-y-4">
               {/* Info del producto encontrado */}
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h3 className="font-semibold text-blue-900 mb-2">Producto Encontrado:</h3>
+                <h3 className="font-semibold text-blue-900 mb-2">Producto Seleccionado:</h3>
                 <div className="space-y-1 text-sm">
-                  <p><strong>Producto:</strong> {productoEncontrado.producto}</p>
-                  <p><strong>Referencia:</strong> {productoEncontrado.referencia}</p>
-                  <p><strong>Proveedor:</strong> {productoEncontrado.proveedor}</p>
+                  <p><strong>Producto:</strong> {productoSeleccionado.producto}</p>
+                  <p><strong>Referencia:</strong> {productoSeleccionado.referencia}</p>
+                  <p><strong>Código:</strong> {productoSeleccionado.codigo}</p>
+                  <p><strong>Proveedor:</strong> {productoSeleccionado.proveedor}</p>
                   <p className="text-lg font-bold text-blue-700">
-                    Cantidad actual: {productoEncontrado.cantidad} {productoEncontrado.unidades}
+                    Cantidad actual: {productoSeleccionado.cantidad} {productoSeleccionado.unidades}
                   </p>
                 </div>
               </div>
@@ -285,7 +348,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                   className="text-lg"
                 />
                 <p className="text-xs text-gray-500">
-                  Nueva cantidad será: <strong>{productoEncontrado.cantidad + (parseFloat(cantidadAgregar) || 0)} {productoEncontrado.unidades}</strong>
+                  Nueva cantidad será: <strong>{productoSeleccionado.cantidad + (parseFloat(cantidadAgregar) || 0)} {productoSeleccionado.unidades}</strong>
                 </p>
               </div>
 
@@ -485,9 +548,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                   </div>
 
                   {/* Costo */}
-                  
                   <div className="space-y-2">
-                    <Label htmlFor="costo">X (Letras) *</Label>
+                    <Label htmlFor="costo">Costo (Código) *</Label>
                     <Input
                       id="costo"
                       {...register('costo')}

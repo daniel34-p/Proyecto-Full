@@ -4,14 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "prisma:generate": "dotenv -e .env -- prisma generate",
     "prisma:migrate": "dotenv -e .env -- prisma migrate dev",
     "prisma:studio": "dotenv -e .env -- prisma studio",
     "prisma:seed": "dotenv -e .env -- tsx prisma/seed.ts",
-    "generate-barcodes": "dotenv -e .env -- tsx prisma/generate-barcodes.ts"
+    "generate-barcodes": "dotenv -e .env -- tsx prisma/generate-barcodes.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -29,10 +30,10 @@
     "html5-qrcode": "^2.3.8",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.553.0",
-    "next": "^16.0.8",
-    "react": "^19.2.1",
+    "next": "16.0.8",
+    "react": "19.2.0",
     "react-barcode": "^1.6.1",
-    "react-dom": "^19.2.1",
+    "react-dom": "19.2.0",
     "react-hook-form": "^7.66.1",
     "tailwind-merge": "^3.4.0",
     "xlsx": "^0.18.5",
