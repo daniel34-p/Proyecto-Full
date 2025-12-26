@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/lib/auth-context';
 import { formatearCostoReal } from '@/lib/encryption';
 import { BarcodeDisplay } from '@/components/barcode-display';
@@ -29,7 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X, Building2 } from 'lucide-react';
+import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
   id: string;
@@ -45,6 +47,10 @@ interface Producto {
   codigoBarras: string;
   embalaje?: string;
   createdAt: string;
+  centroCosto?: {
+    id: string;
+    nombre: string;
+  };
   creadoPor?: {
     nombre: string;
     email: string;
@@ -70,7 +76,8 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
   const [filtroProveedor, setFiltroProveedor] = useState('todos');
   const [filtroUnidades, setFiltroUnidades] = useState('todos');
   const [filtroCreadoPor, setFiltroCreadoPor] = useState('todos');
-  const { isAdmin } = useAuth();
+  const [filtroCentroCosto, setFiltroCentroCosto] = useState('todos');
+  const { isAdmin, isSuperAdmin } = useAuth();
   const [barcodeModal, setBarcodeModal] = useState<{
     isOpen: boolean;
     codigo: string;
@@ -104,8 +111,9 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     const matchProveedor = filtroProveedor === 'todos' || producto.proveedor === filtroProveedor;
     const matchUnidades = filtroUnidades === 'todos' || producto.unidades === filtroUnidades;
     const matchCreadoPor = filtroCreadoPor === 'todos' || producto.creadoPor?.nombre === filtroCreadoPor;
+    const matchCentroCosto = filtroCentroCosto === 'todos' || producto.centroCosto?.id === filtroCentroCosto;
     
-    return matchSearch && matchProveedor && matchUnidades && matchCreadoPor;
+    return matchSearch && matchProveedor && matchUnidades && matchCreadoPor && matchCentroCosto;
   });
 
   // Calcular paginación
@@ -135,12 +143,22 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     setPaginaActual(1);
   };
 
-  // Obtener lista única de proveedores, unidades y usuarios
+  const handleFiltroCentroCostoChange = (value: string) => {
+    setFiltroCentroCosto(value);
+    setPaginaActual(1);
+  };
+
+  // Obtener lista única de proveedores, unidades, usuarios y centros de costo
   const proveedoresUnicos = Array.from(new Set(productos.map(p => p.proveedor))).sort();
   const unidadesUnicas = Array.from(new Set(productos.map(p => p.unidades))).sort();
   const usuariosUnicos = Array.from(
     new Set(productos.map(p => p.creadoPor?.nombre).filter(Boolean))
   ).sort() as string[];
+  const centrosCostoUnicos = Array.from(
+    new Set(productos.map(p => p.centroCosto).filter(Boolean))
+  ).filter((centro, index, self) => 
+    index === self.findIndex((c) => c?.id === centro?.id)
+  ) as Array<{ id: string; nombre: string }>;
 
   // Función para limpiar todos los filtros
   const limpiarFiltros = () => {
@@ -148,11 +166,12 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     setFiltroProveedor('todos');
     setFiltroUnidades('todos');
     setFiltroCreadoPor('todos');
+    setFiltroCentroCosto('todos');
     setPaginaActual(1);
   };
 
   // Verificar si hay filtros activos
-  const hayFiltrosActivos = searchTerm !== '' || filtroProveedor !== 'todos' || filtroUnidades !== 'todos' || filtroCreadoPor !== 'todos';
+  const hayFiltrosActivos = searchTerm !== '' || filtroProveedor !== 'todos' || filtroUnidades !== 'todos' || filtroCreadoPor !== 'todos' || filtroCentroCosto !== 'todos';
 
   const irAPagina = (pagina: number) => {
     setPaginaActual(pagina);
@@ -184,7 +203,7 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
           
           {/* Filtros y búsqueda */}
           <div className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
               {/* Búsqueda */}
               <div className="md:col-span-1">
                 <Input
@@ -228,6 +247,25 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Filtro Centro de Costo - Solo visible para SuperAdmin */}
+              {isSuperAdmin && centrosCostoUnicos.length > 0 && (
+                <div className="md:col-span-1">
+                  <Select value={filtroCentroCosto} onValueChange={handleFiltroCentroCostoChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Filtrar por centro" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los centros</SelectItem>
+                      {centrosCostoUnicos.map((centro) => (
+                        <SelectItem key={centro.id} value={centro.id}>
+                          {centro.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {/* Filtro Creado Por - Solo visible para admins */}
               {isAdmin && (
@@ -297,6 +335,11 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                           </TableHead>
                         )}
                         <TableHead>Precio Venta</TableHead>
+                        {isSuperAdmin && (
+                          <TableHead className="bg-purple-50 text-purple-700 font-semibold">
+                            Centro de Costo
+                          </TableHead>
+                        )}
                         {isAdmin && (
                           <TableHead className="bg-green-50 text-green-700 font-semibold">
                             Creado por
@@ -327,6 +370,21 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                             </TableCell>
                           )}
                           <TableCell>${producto.precioVenta}</TableCell>
+                          {isSuperAdmin && (
+                            <TableCell className="bg-purple-50">
+                              {producto.centroCosto ? (
+                                <Badge 
+                                  variant="outline" 
+                                  className={`${getCentroCostoColor(producto.centroCosto.nombre).bg} ${getCentroCostoColor(producto.centroCosto.nombre).text} ${getCentroCostoColor(producto.centroCosto.nombre).border}`}
+                                >
+                                  <Building2 className="h-3 w-3 mr-1" />
+                                  {producto.centroCosto.nombre}
+                                </Badge>
+                              ) : (
+                                <span className="text-gray-400 text-xs">Sin asignar</span>
+                              )}
+                            </TableCell>
+                          )}
                           {isAdmin && (
                             <TableCell className="bg-green-50 text-green-900 text-sm">
                               {producto.creadoPor?.nombre || 'Sin info'}

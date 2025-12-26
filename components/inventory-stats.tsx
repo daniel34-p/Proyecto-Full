@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Producto {
@@ -19,15 +19,15 @@ interface Producto {
   codigoBarras: string;
   createdAt: string;
   creadoPor?: {
-  nombre: string;
-  email: string;
-  rol: string;
-};
-editadoPor?: {
-  nombre: string;
-  email: string;
-  rol: string;
-};
+    nombre: string;
+    email: string;
+    rol: string;
+  };
+  editadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
 }
 
 interface InventoryStatsProps {
@@ -38,26 +38,37 @@ export function InventoryStats({ productos }: InventoryStatsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [mostrarMontos, setMostrarMontos] = useState(() => {
+    // Cargar preferencia del localStorage
+    const saved = localStorage.getItem('mostrarMontos');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  // Guardar preferencia en localStorage
+  useEffect(() => {
+    localStorage.setItem('mostrarMontos', JSON.stringify(mostrarMontos));
+  }, [mostrarMontos]);
 
   // Calcular estadísticas por proveedor (con validación inline)
   const proveedoresStats = Array.isArray(productos)
     ? productos.reduce((acc, producto) => {
-  const proveedor = producto.proveedor;
-    
-    if (!acc[proveedor]) {
-      acc[proveedor] = {
-        nombre: proveedor,
-        totalProductos: 0,
-        valorTotal: 0, // Costo Real × Cantidad
-      };
-    }
-    
-    acc[proveedor].totalProductos += 1;
-    const costoTotal = producto.costoReal * producto.cantidad;
-    acc[proveedor].valorTotal += costoTotal;
-    
-    return acc;
-  }, {} as Record<string, { nombre: string; totalProductos: number; valorTotal: number }>): {};
+        const proveedor = producto.proveedor;
+        
+        if (!acc[proveedor]) {
+          acc[proveedor] = {
+            nombre: proveedor,
+            totalProductos: 0,
+            valorTotal: 0, // Costo Real × Cantidad
+          };
+        }
+        
+        acc[proveedor].totalProductos += 1;
+        const costoTotal = producto.costoReal * producto.cantidad;
+        acc[proveedor].valorTotal += costoTotal;
+        
+        return acc;
+      }, {} as Record<string, { nombre: string; totalProductos: number; valorTotal: number }>)
+    : {};
 
   const proveedoresArray = Object.values(proveedoresStats);
   const totalProductos = Array.isArray(productos) ? productos.length : 0;
@@ -99,8 +110,42 @@ export function InventoryStats({ productos }: InventoryStatsProps) {
     }
   };
 
+  const formatearMonto = (valor: number) => {
+    if (!mostrarMontos) {
+      return '•••••••';
+    }
+    return `$${valor.toLocaleString('es-CO', { 
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2 
+    })}`;
+  };
+
   return (
     <div className="relative">
+      {/* Botón de ocultar/mostrar montos */}
+      <div className="flex justify-end mb-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setMostrarMontos(!mostrarMontos)}
+          className="flex items-center gap-2"
+        >
+          {mostrarMontos ? (
+            <>
+              <EyeOff className="h-4 w-4" />
+              <span className="hidden sm:inline">Ocultar montos</span>
+              <span className="sm:hidden">Ocultar</span>
+            </>
+          ) : (
+            <>
+              <Eye className="h-4 w-4" />
+              <span className="hidden sm:inline">Mostrar montos</span>
+              <span className="sm:hidden">Mostrar</span>
+            </>
+          )}
+        </Button>
+      </div>
+
       {/* Botón scroll izquierda */}
       {canScrollLeft && (
         <Button
@@ -156,10 +201,7 @@ export function InventoryStats({ productos }: InventoryStatsProps) {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                ${proveedor.valorTotal.toLocaleString('es-CO', { 
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2 
-                })}
+                {formatearMonto(proveedor.valorTotal)}
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {proveedor.totalProductos} producto{proveedor.totalProductos !== 1 ? 's' : ''}
@@ -178,10 +220,7 @@ export function InventoryStats({ productos }: InventoryStatsProps) {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-green-700">
-                ${granTotal.toLocaleString('es-CO', { 
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2 
-                })}
+                {formatearMonto(granTotal)}
               </div>
               <p className="text-xs text-green-600 mt-1">
                 Suma de todos los proveedores

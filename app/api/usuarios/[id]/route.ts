@@ -11,10 +11,60 @@ export async function PUT(
     const { id } = await context.params;
     const body = await request.json();
     
+    // Obtener usuario actual
+    const usuarioActual = await prisma.usuario.findUnique({
+      where: { id }
+    });
+
+    if (!usuarioActual) {
+      return NextResponse.json(
+        { error: 'Usuario no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Validar que SuperAdmin no tenga centro de costo
+    if (body.rol === 'superadmin' && body.centroCostoId) {
+      return NextResponse.json(
+        { error: 'Los SuperAdmin no pueden tener centro de costo asignado' },
+        { status: 400 }
+      );
+    }
+
+    // Validar que Admin y Asesor SÍ tengan centro de costo
+    if ((body.rol === 'admin' || body.rol === 'asesor') && !body.centroCostoId) {
+      return NextResponse.json(
+        { error: 'Admin y Asesor deben tener un centro de costo asignado' },
+        { status: 400 }
+      );
+    }
+
+    // Si tiene centro de costo, verificar que exista y esté activo
+    if (body.centroCostoId) {
+      const centroCosto = await prisma.centroCosto.findUnique({
+        where: { id: body.centroCostoId }
+      });
+
+      if (!centroCosto) {
+        return NextResponse.json(
+          { error: 'El centro de costo seleccionado no existe' },
+          { status: 400 }
+        );
+      }
+
+      if (!centroCosto.activo) {
+        return NextResponse.json(
+          { error: 'El centro de costo seleccionado está desactivado' },
+          { status: 400 }
+        );
+      }
+    }
+    
     const updateData: any = {
       nombre: body.nombre,
       rol: body.rol,
       activo: body.activo,
+      centroCostoId: body.rol === 'superadmin' ? null : body.centroCostoId,
     };
 
     // Solo actualizar contraseña si se proporciona
@@ -31,6 +81,13 @@ export async function PUT(
         nombre: true,
         rol: true,
         activo: true,
+        centroCostoId: true,
+        centroCosto: {
+          select: {
+            id: true,
+            nombre: true,
+          }
+        },
         createdAt: true,
         updatedAt: true,
       }

@@ -18,6 +18,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Building2, AlertCircle, Plus } from 'lucide-react';
+import { CentrosCostoConfig } from '@/components/centros-costo-config';
+
+interface CentroCosto {
+  id: string;
+  nombre: string;
+  activo: boolean;
+}
 
 interface Usuario {
   id: string;
@@ -25,6 +33,11 @@ interface Usuario {
   nombre: string;
   rol: string;
   activo: boolean;
+  centroCostoId?: string | null;
+  centroCosto?: {
+    id: string;
+    nombre: string;
+  } | null;
 }
 
 interface UsuarioFormProps {
@@ -40,10 +53,21 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
     password: '',
     nombre: '',
     rol: 'asesor',
+    centroCostoId: '',
   });
+  const [centrosCosto, setCentrosCosto] = useState<CentroCosto[]>([]);
+  const [loadingCentros, setLoadingCentros] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [configModalOpen, setConfigModalOpen] = useState(false);
   const isEditing = !!usuarioToEdit;
+
+  // Cargar centros de costo al abrir el modal
+  useEffect(() => {
+    if (isOpen) {
+      fetchCentrosCosto();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (usuarioToEdit) {
@@ -52,6 +76,7 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
         password: '',
         nombre: usuarioToEdit.nombre,
         rol: usuarioToEdit.rol,
+        centroCostoId: usuarioToEdit.centroCostoId || '',
       });
     } else {
       setFormData({
@@ -59,9 +84,32 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
         password: '',
         nombre: '',
         rol: 'asesor',
+        centroCostoId: '',
       });
     }
   }, [usuarioToEdit]);
+
+  const fetchCentrosCosto = async () => {
+    setLoadingCentros(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/centros-costo', {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Filtrar solo centros activos
+        setCentrosCosto(data.filter((c: CentroCosto) => c.activo));
+      }
+    } catch (error) {
+      console.error('Error al cargar centros de costo:', error);
+    } finally {
+      setLoadingCentros(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,6 +136,17 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
       return;
     }
 
+    // Validar centro de costo según rol
+    if (formData.rol !== 'superadmin' && !formData.centroCostoId) {
+      setError('Debes seleccionar un centro de costo para Admin y Asesor');
+      return;
+    }
+
+    if (formData.rol === 'superadmin' && formData.centroCostoId) {
+      setError('Los SuperAdmin no pueden tener centro de costo');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -100,6 +159,7 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
       const body: any = {
         nombre: formData.nombre,
         rol: formData.rol,
+        centroCostoId: formData.rol === 'superadmin' ? null : formData.centroCostoId || null,
       };
 
       if (!isEditing) {
@@ -134,6 +194,9 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
       setIsSubmitting(false);
     }
   };
+
+  const requiresCentroCosto = formData.rol === 'admin' || formData.rol === 'asesor';
+  const isSuperAdmin = formData.rol === 'superadmin';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -212,7 +275,14 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
             <Label htmlFor="rol">Rol *</Label>
             <Select
               value={formData.rol}
-              onValueChange={(value) => setFormData({ ...formData, rol: value })}
+              onValueChange={(value) => {
+                setFormData({ 
+                  ...formData, 
+                  rol: value,
+                  // Limpiar centro de costo si es superadmin
+                  centroCostoId: value === 'superadmin' ? '' : formData.centroCostoId
+                });
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Selecciona un rol" />
@@ -224,6 +294,63 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
               </SelectContent>
             </Select>
           </div>
+
+          {/* Centro de Costo - Solo para Admin y Asesor */}
+          {requiresCentroCosto && (
+            <div className="space-y-2">
+              <Label htmlFor="centroCosto" className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-blue-600" />
+                Centro de Costo *
+              </Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.centroCostoId}
+                  onValueChange={(value) => setFormData({ ...formData, centroCostoId: value })}
+                  disabled={loadingCentros}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder={loadingCentros ? "Cargando..." : "Selecciona un centro de costo"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {centrosCosto.length === 0 ? (
+                      <SelectItem value="none" disabled>
+                        No hay centros de costo disponibles
+                      </SelectItem>
+                    ) : (
+                      centrosCosto.map((centro) => (
+                        <SelectItem key={centro.id} value={centro.id}>
+                          {centro.nombre}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setConfigModalOpen(true)}
+                  title="Gestionar centros de costo"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                El usuario solo podrá ver productos de este centro
+              </p>
+            </div>
+          )}
+
+          {/* Mensaje informativo para SuperAdmin */}
+          {isSuperAdmin && (
+            <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
+              <p className="text-xs text-purple-700 flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Los SuperAdmin no tienen centro de costo y pueden ver todos los productos
+              </p>
+            </div>
+          )}
 
           {/* Error */}
           {error && (
@@ -252,6 +379,13 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
             </Button>
           </div>
         </form>
+
+        {/* Modal de gestión de centros de costo */}
+        <CentrosCostoConfig
+          isOpen={configModalOpen}
+          onClose={() => setConfigModalOpen(false)}
+          onCentroCreado={fetchCentrosCosto}
+        />
       </DialogContent>
     </Dialog>
   );

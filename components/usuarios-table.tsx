@@ -20,7 +20,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Edit, Power, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { MoreVertical, Edit, Power, Trash2, CheckCircle, XCircle, Building2 } from 'lucide-react';
+import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Usuario {
   id: string;
@@ -29,6 +30,11 @@ interface Usuario {
   rol: string;
   activo: boolean;
   createdAt: string;
+  centroCostoId?: string | null;
+  centroCosto?: {
+    id: string;
+    nombre: string;
+  } | null;
   _count?: {
     productosCreados: number;
     productosEditados: number;
@@ -50,7 +56,8 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
     return (
       usuario.nombre.toLowerCase().includes(search) ||
       usuario.email.toLowerCase().includes(search) ||
-      usuario.rol.toLowerCase().includes(search)
+      usuario.rol.toLowerCase().includes(search) ||
+      (usuario.centroCosto?.nombre && usuario.centroCosto.nombre.toLowerCase().includes(search))
     );
   });
 
@@ -87,7 +94,7 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
           <CardTitle>Usuarios del Sistema ({filteredUsuarios.length})</CardTitle>
           <div className="w-full sm:w-64">
             <Input
-              placeholder="Buscar por nombre, email o rol..."
+              placeholder="Buscar por nombre, email o centro..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full"
@@ -108,6 +115,7 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
                   <TableHead>Nombre</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Rol</TableHead>
+                  <TableHead>Centro de Costo</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Productos</TableHead>
                   <TableHead>Fecha Registro</TableHead>
@@ -120,6 +128,24 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
                     <TableCell className="font-medium">{usuario.nombre}</TableCell>
                     <TableCell>{usuario.email}</TableCell>
                     <TableCell>{getRolBadge(usuario.rol)}</TableCell>
+                    <TableCell>
+                      {usuario.rol === 'superadmin' ? (
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
+                          <Building2 className="h-3 w-3 mr-1" />
+                          Todos los centros
+                        </Badge>
+                      ) : usuario.centroCosto ? (
+                        <Badge 
+                          variant="outline" 
+                          className={`${getCentroCostoColor(usuario.centroCosto.nombre).bg} ${getCentroCostoColor(usuario.centroCosto.nombre).text} ${getCentroCostoColor(usuario.centroCosto.nombre).border}`}
+                        >
+                          <Building2 className="h-3 w-3 mr-1" />
+                          {usuario.centroCosto.nombre}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-red-600">Sin asignar</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {usuario.activo ? (
                         <div className="flex items-center gap-1 text-green-600">

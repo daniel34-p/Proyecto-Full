@@ -15,6 +15,13 @@ export async function GET() {
         nombre: true,
         rol: true,
         activo: true,
+        centroCostoId: true,
+        centroCosto: {
+          select: {
+            id: true,
+            nombre: true,
+          }
+        },
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -49,6 +56,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validar que SuperAdmin no tenga centro de costo
+    if (body.rol === 'superadmin' && body.centroCostoId) {
+      return NextResponse.json(
+        { error: 'Los SuperAdmin no pueden tener centro de costo asignado' },
+        { status: 400 }
+      );
+    }
+
+    // Validar que Admin y Asesor SÍ tengan centro de costo
+    if ((body.rol === 'admin' || body.rol === 'asesor') && !body.centroCostoId) {
+      return NextResponse.json(
+        { error: 'Admin y Asesor deben tener un centro de costo asignado' },
+        { status: 400 }
+      );
+    }
+
     // Verificar que el email no exista
     const existente = await prisma.usuario.findUnique({
       where: { email: body.email }
@@ -61,6 +84,27 @@ export async function POST(request: Request) {
       );
     }
 
+    // Si tiene centro de costo, verificar que exista y esté activo
+    if (body.centroCostoId) {
+      const centroCosto = await prisma.centroCosto.findUnique({
+        where: { id: body.centroCostoId }
+      });
+
+      if (!centroCosto) {
+        return NextResponse.json(
+          { error: 'El centro de costo seleccionado no existe' },
+          { status: 400 }
+        );
+      }
+
+      if (!centroCosto.activo) {
+        return NextResponse.json(
+          { error: 'El centro de costo seleccionado está desactivado' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Hashear contraseña
     const hashedPassword = await hashPassword(body.password);
     
@@ -71,6 +115,7 @@ export async function POST(request: Request) {
         nombre: body.nombre,
         rol: body.rol,
         activo: true,
+        centroCostoId: body.rol === 'superadmin' ? null : body.centroCostoId,
       },
       select: {
         id: true,
@@ -78,6 +123,13 @@ export async function POST(request: Request) {
         nombre: true,
         rol: true,
         activo: true,
+        centroCostoId: true,
+        centroCosto: {
+          select: {
+            id: true,
+            nombre: true,
+          }
+        },
         createdAt: true,
       }
     });

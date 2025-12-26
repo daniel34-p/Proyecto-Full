@@ -8,8 +8,9 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ScannedProductView } from '@/components/scanned-product-view';
-import { Camera, Download } from 'lucide-react';
+import { Camera, Download, Building2 } from 'lucide-react';
 import { exportarProductosAExcel } from '@/lib/excel-export';
+import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
   id: string;
@@ -23,7 +24,12 @@ interface Producto {
   precioVenta: string;
   codigo: string;
   codigoBarras: string;
+  embalaje?: string;
   createdAt: string;
+  centroCosto?: {
+    id: string;
+    nombre: string;
+  };
   creadoPor?: {
     nombre: string;
     email: string;
@@ -42,54 +48,63 @@ export function AdminView() {
   const [productoToEdit, setProductoToEdit] = useState<Producto | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Producto | null>(null);
-  const { user, logout } = useAuth();
+  const { user, logout, centroCosto } = useAuth();
 
-    const fetchProductos = async () => {
+  const fetchProductos = async () => {
     try {
-        const token = localStorage.getItem('token');
-        const response = await fetch('/api/productos', {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/productos', {
         headers: {
-            'Authorization': token ? `Bearer ${token}` : '',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
-        });
-        const data = await response.json();
-        setProductos(data);
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          logout();
+          return;
+        }
+        throw new Error('Error al cargar productos');
+      }
+
+      const data = await response.json();
+      setProductos(data);
     } catch (error) {
-        console.error('Error al cargar productos:', error);
+      console.error('Error al cargar productos:', error);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-    };
+  };
 
   useEffect(() => {
     fetchProductos();
   }, []);
 
-    const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
 
     try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`/api/productos/${encodeURIComponent(id)}`, {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/productos/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: {
-            'Authorization': token ? `Bearer ${token}` : '',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
-        });
+      });
 
-        if (!response.ok) {
+      if (!response.ok) {
         const errorData = await response.json();
         alert(errorData.error || 'Error al eliminar producto');
         return;
-        }
+      }
 
-        await fetchProductos();
-        alert('Producto eliminado correctamente');
+      await fetchProductos();
+      alert('Producto eliminado correctamente');
     } catch (error) {
-        console.error('Error al eliminar producto:', error);
-        alert('Error al eliminar producto');
+      console.error('Error al eliminar producto:', error);
+      alert('Error al eliminar producto');
     }
-    };
+  };
 
   const handleEdit = (producto: Producto) => {
     setProductoToEdit(producto);
@@ -123,9 +138,21 @@ export function AdminView() {
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
                 Panel de Administración
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Bienvenido, {user?.nombre}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs sm:text-sm text-gray-600">
+                  Bienvenido, {user?.nombre}
+                </p>
+                {centroCosto && (
+                  <div 
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md border ${getCentroCostoColor(centroCosto.nombre).bg} ${getCentroCostoColor(centroCosto.nombre).text} ${getCentroCostoColor(centroCosto.nombre).border}`}
+                  >
+                    <Building2 className="h-3 w-3" />
+                    <span className="text-xs font-medium">
+                      {centroCosto.nombre}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <Button
@@ -164,7 +191,7 @@ export function AdminView() {
       </header>
 
       {/* Contenido */}
-            <main className="p-4 sm:p-6 lg:p-8">
+      <main className="p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
           {/* Estadísticas */}
           <InventoryStats productos={productos} />
@@ -190,6 +217,7 @@ export function AdminView() {
           </div>
         </div>
       </main>
+
       {/* Escáner de código de barras */}
       <BarcodeScanner
         isOpen={scannerOpen}

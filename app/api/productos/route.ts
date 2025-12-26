@@ -2,15 +2,73 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { desencriptarCosto } from '@/lib/encryption';
 import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
+import { verifyToken } from '@/lib/jwt';
 
-// GET - Listar todos los productos
-export async function GET() {
+// GET - Listar productos filtrados por centro de costo
+export async function GET(request: Request) {
   try {
+    // Extraer y verificar token
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    
+    if (!token) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      return NextResponse.json(
+        { error: 'Token inválido' },
+        { status: 401 }
+      );
+    }
+
+    // Obtener usuario completo con centro de costo
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: payload.userId },
+      include: { centroCosto: true }
+    });
+
+    if (!usuario) {
+      return NextResponse.json(
+        { error: 'Usuario no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Construir filtro según el rol
+    let whereClause: any = {};
+
+    if (usuario.rol === 'superadmin') {
+      // SuperAdmin ve TODOS los productos
+      whereClause = {};
+    } else if (usuario.rol === 'admin' || usuario.rol === 'asesor') {
+      // Admin y Asesor solo ven productos de su centro de costo
+      if (!usuario.centroCostoId) {
+        return NextResponse.json(
+          { error: 'Usuario sin centro de costo asignado' },
+          { status: 403 }
+        );
+      }
+      whereClause = { centroCostoId: usuario.centroCostoId };
+    }
+
+    // Obtener productos con filtro
     const productos = await prisma.producto.findMany({
+      where: whereClause,
       orderBy: {
         createdAt: 'desc'
       },
       include: {
+        centroCosto: {
+          select: {
+            id: true,
+            nombre: true,
+          }
+        },
         creadoPor: {
           select: {
             nombre: true,
@@ -51,6 +109,27 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
+
+    // Obtener usuario con su centro de costo
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: userId },
+      include: { centroCosto: true }
+    });
+
+    if (!usuario) {
+      return NextResponse.json(
+        { error: 'Usuario no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Validar que el usuario tenga centro de costo (excepto superadmin)
+    if (usuario.rol !== 'superadmin' && !usuario.centroCostoId) {
+      return NextResponse.json(
+        { error: 'Usuario sin centro de costo asignado' },
+        { status: 403 }
+      );
+    }
     
     console.log('📦 Creando producto con código:', body.codigo);
     
@@ -79,8 +158,15 @@ export async function POST(request: Request) {
         codigoBarras: codigoBarras,
         embalaje: body.embalaje ? body.embalaje.toUpperCase() : null,
         creadoPorId: userId,
+        centroCostoId: usuario.centroCostoId, // Asignar centro de costo del usuario
       },
       include: {
+        centroCosto: {
+          select: {
+            id: true,
+            nombre: true,
+          }
+        },
         creadoPor: {
           select: {
             nombre: true,

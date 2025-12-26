@@ -15,9 +15,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // Buscar usuario
+    // Buscar usuario con centro de costo
     const usuario = await prisma.usuario.findUnique({
       where: { email: email.toLowerCase().trim() },
+      include: {
+        centroCosto: {
+          select: {
+            id: true,
+            nombre: true,
+            activo: true,
+          }
+        }
+      }
     });
 
     // Verificar si existe
@@ -25,6 +34,22 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Credenciales inválidas' },
         { status: 401 }
+      );
+    }
+
+    // Verificar si el usuario está activo
+    if (!usuario.activo) {
+      return NextResponse.json(
+        { error: 'Usuario desactivado. Contacta al administrador.' },
+        { status: 403 }
+      );
+    }
+
+    // Verificar si el centro de costo está activo (si aplica)
+    if (usuario.centroCosto && !usuario.centroCosto.activo) {
+      return NextResponse.json(
+        { error: 'Centro de costo desactivado. Contacta al administrador.' },
+        { status: 403 }
       );
     }
 
@@ -40,20 +65,25 @@ export async function POST(request: Request) {
 
     // Generar token JWT
     const token = generateToken({
-    userId: usuario.id,
-    email: usuario.email,
-    rol: usuario.rol,
+      userId: usuario.id,
+      email: usuario.email,
+      rol: usuario.rol,
     });
 
-    // Retornar datos del usuario con token
+    // Retornar datos del usuario con token (incluyendo centro de costo)
     return NextResponse.json({
-    user: {
+      user: {
         id: usuario.id,
         email: usuario.email,
         nombre: usuario.nombre,
         rol: usuario.rol,
-    },
-    token,
+        centroCostoId: usuario.centroCostoId,
+        centroCosto: usuario.centroCosto ? {
+          id: usuario.centroCosto.id,
+          nombre: usuario.centroCosto.nombre,
+        } : null,
+      },
+      token,
     });
   } catch (error) {
     console.error('Error en login:', error);

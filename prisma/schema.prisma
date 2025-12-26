@@ -7,49 +7,72 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Usuario {
+model CentroCosto {
   id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  nombre    String
-  rol       String   // "asesor", "admin", "superadmin"
-  activo    Boolean  @default(true)  // Para activar/desactivar usuarios
+  nombre    String   @unique  // "Metroadornos", "Metroherrajes"
+  activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  productosCreados   Producto[] @relation("ProductosCreadosPor")
-  productosEditados  Producto[] @relation("ProductosEditadosPor")
+  usuarios  Usuario[]
+  productos Producto[]
 
-  @@index([email])
+  @@index([nombre])
   @@index([activo])
 }
 
+model Usuario {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  password       String
+  nombre         String
+  rol            String       // "asesor", "admin", "superadmin"
+  activo         Boolean      @default(true)
+  centroCostoId  String?      // Solo SuperAdmin no tiene centro de costo
+  centroCosto    CentroCosto? @relation(fields: [centroCostoId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relaciones
+  productosCreados  Producto[] @relation("ProductosCreadosPor")
+  productosEditados Producto[] @relation("ProductosEditadosPor")
+
+  @@index([email])
+  @@index([activo])
+  @@index([centroCostoId])
+}
+
 model Producto {
-  id              String   @id @default(cuid())
-  proveedor       String
-  referencia      String
-  producto        String
-  cantidad        Float    // Cambiado de Int a Float para aceptar decimales
-  unidades        String
-  costo           String
-  costoReal       Int      @default(0)
-  precioVenta     String
-  codigo          String
-  codigoBarras    String   @unique
-  embalaje        String?  // Campo opcional
+  id             String       @id @default(cuid())
+  proveedor      String
+  referencia     String
+  producto       String
+  cantidad       Float        // Float para aceptar decimales
+  unidades       String
+  costo          String
+  costoReal      Int          @default(0)
+  precioVenta    String
+  codigo         String
+  codigoBarras   String       @unique
+  embalaje       String?      // Campo opcional
+  
+  // Centro de Costo - OPCIONAL al inicio para la migración
+  centroCostoId  String?
+  centroCosto    CentroCosto? @relation(fields: [centroCostoId], references: [id])
   
   // Tracking de usuarios
-  creadoPorId     String?
-  creadoPor       Usuario?  @relation("ProductosCreadosPor", fields: [creadoPorId], references: [id])
-  editadoPorId    String?
-  editadoPor      Usuario?  @relation("ProductosEditadosPor", fields: [editadoPorId], references: [id])
+  creadoPorId    String?
+  creadoPor      Usuario?     @relation("ProductosCreadosPor", fields: [creadoPorId], references: [id])
+  editadoPorId   String?
+  editadoPor     Usuario?     @relation("ProductosEditadosPor", fields: [editadoPorId], references: [id])
   
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   
   @@index([proveedor])
   @@index([producto])
   @@index([creadoPorId])
-  @@index([referencia])  // Agregado para búsqueda más rápida
+  @@index([referencia])
+  @@index([centroCostoId])  // Importante para filtrado rápido
 }

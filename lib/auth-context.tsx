@@ -4,11 +4,18 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 
 type UserRole = 'admin' | 'asesor' | 'superadmin';
 
+interface CentroCosto {
+  id: string;
+  nombre: string;
+}
+
 interface User {
   id: string;
   email: string;
   nombre: string;
   rol: UserRole;
+  centroCosto?: CentroCosto | null;
+  centroCostoId?: string | null;
 }
 
 interface AuthContextType {
@@ -18,6 +25,7 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isAsesor: boolean;
   isAuthenticated: boolean;
+  centroCosto: CentroCosto | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
@@ -82,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSuperAdmin: user?.rol === 'superadmin',
         isAsesor: user?.rol === 'asesor',
         isAuthenticated: !!user,
+        centroCosto: user?.centroCosto || null,
         login,
         logout,
       }}

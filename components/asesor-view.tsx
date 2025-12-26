@@ -7,7 +7,8 @@ import { ScannedProductView } from '@/components/scanned-product-view';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Camera } from 'lucide-react';
+import { Camera, Building2 } from 'lucide-react';
+import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
   id: string;
@@ -23,6 +24,10 @@ interface Producto {
   codigoBarras: string;
   embalaje?: string;
   createdAt: string;
+  centroCosto?: {
+    id: string;
+    nombre: string;
+  };
   creadoPor?: {
     nombre: string;
     email: string;
@@ -36,7 +41,7 @@ interface Producto {
 }
 
 export function AsesorView() {
-  const { user, logout } = useAuth();
+  const { user, logout, centroCosto } = useAuth();
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Producto | null>(null);
@@ -58,9 +63,21 @@ export function AsesorView() {
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
                 Sistema de Inventario
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Bienvenido, {user?.nombre}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs sm:text-sm text-gray-600">
+                  Bienvenido, {user?.nombre}
+                </p>
+                {centroCosto && (
+                  <div 
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md border ${getCentroCostoColor(centroCosto.nombre).bg} ${getCentroCostoColor(centroCosto.nombre).text} ${getCentroCostoColor(centroCosto.nombre).border}`}
+                  >
+                    <Building2 className="h-3 w-3" />
+                    <span className="text-xs font-medium">
+                      {centroCosto.nombre}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
               <Button
@@ -109,6 +126,12 @@ export function AsesorView() {
             <p>• El código debe ser único para cada producto</p>
             <p>• El costo debe ingresarse en formato de código (solo letras)</p>
             <p>• Verifica los datos antes de guardar</p>
+            {centroCosto && (
+              <p className={`font-medium mt-3 flex items-center gap-2 ${getCentroCostoColor(centroCosto.nombre).text}`}>
+                <Building2 className="h-4 w-4" />
+                Los productos se registrarán en: {centroCosto.nombre}
+              </p>
+            )}
           </CardContent>
         </Card>
       </main>
@@ -129,7 +152,6 @@ export function AsesorView() {
         isOpen={!!scannedProduct}
         onClose={() => setScannedProduct(null)}
         onUpdate={() => {
-          // El asesor no necesita recargar la lista, solo confirmar
           setScannedProduct(null);
         }}
       />
