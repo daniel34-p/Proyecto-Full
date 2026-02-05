@@ -13,6 +13,10 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   createdAt: string;
+  centroCosto?: {
+    id: string;
+    nombre: string;
+  };
   creadoPor?: {
     nombre: string;
     email: string;
@@ -26,7 +30,7 @@ interface Producto {
 }
 
 /**
- * Exporta productos a Excel con hojas separadas por proveedor
+ * Exporta productos a Excel con hojas separadas por proveedor y formato mejorado
  */
 export function exportarProductosAExcel(productos: Producto[], incluirCostoReal: boolean = false) {
   // Crear libro de Excel
@@ -45,9 +49,20 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
   // Crear una hoja por cada proveedor
   Object.entries(productosPorProveedor).forEach(([proveedor, productosProveedor]) => {
     const nombreHoja = proveedor.charAt(0).toUpperCase() + proveedor.slice(1);
+    const proveedorMayus = nombreHoja.toUpperCase();
     
-    // Preparar datos para esta hoja
-    const datosExcel = productosProveedor.map((producto, index) => {
+    // Calcular totales para el encabezado
+    const totalProductosProveedor = productosProveedor.length;
+    const totalCantidad = productosProveedor.reduce((sum, p) => sum + p.cantidad, 0);
+    const totalValorCosto = incluirCostoReal 
+      ? productosProveedor.reduce((sum, p) => sum + (p.costoReal * p.cantidad), 0)
+      : 0;
+    
+    // Preparar array de datos
+    const datosExcel: any[] = [];
+    
+    // Preparar datos de productos (sin encabezado todavía)
+    const productosData = productosProveedor.map((producto, index) => {
       const fila: any = {
         '#': index + 1,
         'Código': producto.codigo,
@@ -61,64 +76,117 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
       // Solo incluir costo real si es admin
       if (incluirCostoReal) {
         fila['Costo Real'] = producto.costoReal;
-        fila['Valor Total Costo'] = producto.costoReal * producto.cantidad;
+        fila['Valor Total'] = producto.costoReal * producto.cantidad;
       }
 
-      fila['Precio de Venta'] = parseFloat(producto.precioVenta);
+      fila['Precio Venta'] = parseFloat(producto.precioVenta);
+      
+      // Agregar centro de costo si existe
+      if (producto.centroCosto) {
+        fila['Centro de Costo'] = producto.centroCosto.nombre;
+      }
+      
       fila['Registrado por'] = producto.creadoPor?.nombre || 'Sin información';
-      fila['Fecha de Registro'] = new Date(producto.createdAt).toLocaleDateString('es-CO');
+      fila['Fecha Registro'] = new Date(producto.createdAt).toLocaleDateString('es-CO');
 
       return fila;
     });
 
-    // Calcular total de valor en costo para este proveedor
-    if (incluirCostoReal) {
-      const totalValorCosto = productosProveedor.reduce((sum, p) => {
-        return sum + (p.costoReal * p.cantidad);
-      }, 0);
+    // Crear la hoja SIN json_to_sheet para poder personalizar el encabezado
+    const hoja = XLSX.utils.aoa_to_sheet([]);
+    
+    // Agregar encabezado personalizado (sin columnas todavía)
+    XLSX.utils.sheet_add_aoa(hoja, [
+      [`╔═══════════════════════════════════════════════════════════════════════════════════════════╗`],
+      [`║  📦 INVENTARIO - ${proveedorMayus}`],
+      [`║  ────────────────────────────────────────────────────────────────────────────────────────`],
+      [`║  Total de productos: ${totalProductosProveedor}`],
+    ], { origin: 'A1' });
 
-      // Agregar fila vacía
-      datosExcel.push({});
+    let currentRow = 4;
+    
+    if (incluirCostoReal) {
+      XLSX.utils.sheet_add_aoa(hoja, [
+        [`║  💰 Valor total inventario: $${totalValorCosto.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+      ], { origin: `A${currentRow + 1}` });
+      currentRow++;
+    }
+
+    XLSX.utils.sheet_add_aoa(hoja, [
+      [`╚═══════════════════════════════════════════════════════════════════════════════════════════╝`],
+      [], // Línea vacía
+    ], { origin: `A${currentRow + 1}` });
+    
+    currentRow += 2;
+
+    // Ahora agregar la tabla de productos con encabezados
+    XLSX.utils.sheet_add_json(hoja, productosData, { 
+      origin: `A${currentRow + 1}`,
+      skipHeader: false 
+    });
+
+    // Agregar filas de totales con mejor formato
+    if (incluirCostoReal) {
+      const lastRow = currentRow + productosData.length + 1;
       
-      // Agregar fila de total
-      datosExcel.push({
-        '#': '',
+      XLSX.utils.sheet_add_aoa(hoja, [
+        [], // Línea vacía
+        [`═══════════════════════════════════════════════════════════════════════════════════════════`],
+      ], { origin: `A${lastRow + 1}` });
+
+      const totalRow: any = {
+        '#': '🏆 TOTALES',
         'Código': '',
         'Producto': '',
         'Referencia': '',
-        'Cantidad': '',
-        'Unidades': '',
-        'Costo (Código)': 'TOTAL:',
+        'Cantidad': totalCantidad,
+        'Unidades': 'unidades',
+        'Costo (Código)': '',
         'Costo Real': '',
-        'Valor Total Costo': totalValorCosto,
-        'Precio de Venta': '',
+        'Valor Total': totalValorCosto,
+        'Precio Venta': '',
         'Registrado por': '',
-        'Fecha de Registro': '',
+        'Fecha Registro': '',
+      };
+
+      if (productosProveedor.some(p => p.centroCosto)) {
+        totalRow['Centro de Costo'] = '';
+      }
+
+      XLSX.utils.sheet_add_json(hoja, [totalRow], { 
+        origin: `A${lastRow + 3}`,
+        skipHeader: true 
       });
+
+      XLSX.utils.sheet_add_aoa(hoja, [
+        [`═══════════════════════════════════════════════════════════════════════════════════════════`],
+      ], { origin: `A${lastRow + 4}` });
     }
-
-    // Crear hoja
-    const hoja = XLSX.utils.json_to_sheet(datosExcel);
-
-    // Ajustar ancho de columnas
+    // Ajustar ancho de columnas de forma más generosa
     const anchosColumnas = [
-      { wch: 5 },   // #
-      { wch: 12 },  // Código
-      { wch: 30 },  // Producto
-      { wch: 15 },  // Referencia
-      { wch: 10 },  // Cantidad
-      { wch: 12 },  // Unidades
-      { wch: 15 },  // Costo (Código)
+      { wch: 6 },   // #
+      { wch: 14 },  // Código
+      { wch: 35 },  // Producto (más ancho)
+      { wch: 18 },  // Referencia
+      { wch: 12 },  // Cantidad
+      { wch: 14 },  // Unidades
+      { wch: 16 },  // Costo (Código)
     ];
 
     if (incluirCostoReal) {
-      anchosColumnas.push({ wch: 15 }); // Costo Real
-      anchosColumnas.push({ wch: 18 }); // Valor Total Costo
+      anchosColumnas.push({ wch: 16 }); // Costo Real
+      anchosColumnas.push({ wch: 18 }); // Valor Total
     }
 
-    anchosColumnas.push({ wch: 18 }); // Precio de Venta
-    anchosColumnas.push({ wch: 25 }); // Registrado por
-    anchosColumnas.push({ wch: 15 }); // Fecha de Registro
+    anchosColumnas.push({ wch: 16 }); // Precio Venta
+    
+    // Solo si hay productos con centro de costo
+    if (productosProveedor.some(p => p.centroCosto)) {
+      anchosColumnas.push({ wch: 20 }); // Centro de Costo
+    }
+    
+    anchosColumnas.push({ wch: 28 }); // Registrado por
+    anchosColumnas.push({ wch: 16 }); // Fecha Registro
 
     hoja['!cols'] = anchosColumnas;
 
@@ -126,31 +194,52 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
     XLSX.utils.book_append_sheet(libro, hoja, nombreHoja);
   });
 
-  // Agregar hoja de resumen al final
+  // Agregar hoja de resumen al final (mejorada)
   if (incluirCostoReal) {
     const resumen = calcularResumenMejorado(productos, productosPorProveedor);
     const hojaResumen = XLSX.utils.json_to_sheet(resumen);
-    hojaResumen['!cols'] = [{ wch: 35 }, { wch: 25 }];
-    XLSX.utils.book_append_sheet(libro, hojaResumen, 'Resumen');
+    
+    // Ajustar anchos de columna del resumen
+    hojaResumen['!cols'] = [
+      { wch: 40 },  // Descripción más ancha
+      { wch: 28 }   // Valor más ancho
+    ];
+    
+    XLSX.utils.book_append_sheet(libro, hojaResumen, '📊 Resumen');
   }
 
-  // Generar nombre de archivo con fecha
-  const fecha = new Date().toISOString().split('T')[0];
-  const nombreArchivo = `inventario_${fecha}.xlsx`;
+  // Generar nombre de archivo con fecha y hora
+  const ahora = new Date();
+  const fecha = ahora.toISOString().split('T')[0];
+  const hora = ahora.toTimeString().split(' ')[0].replace(/:/g, '-');
+  const nombreArchivo = `inventario_${fecha}_${hora}.xlsx`;
 
   // Descargar archivo
   XLSX.writeFile(libro, nombreArchivo);
 }
 
 /**
- * Calcula resumen mejorado del inventario
+ * Calcula resumen mejorado del inventario (SIN total unidades)
  */
 function calcularResumenMejorado(
   productos: Producto[], 
   productosPorProveedor: Record<string, Producto[]>
 ) {
+  const ahora = new Date();
+  const fechaFormateada = ahora.toLocaleDateString('es-CO', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  const horaFormateada = ahora.toLocaleTimeString('es-CO');
+
   const resumen: any[] = [
-    { 'Descripción': 'RESUMEN DE INVENTARIO', 'Valor': '' },
+    { 'Descripción': '═══════════════════════════════════════', 'Valor': '═══════════════════════' },
+    { 'Descripción': '📊 RESUMEN DE INVENTARIO', 'Valor': '' },
+    { 'Descripción': '═══════════════════════════════════════', 'Valor': '═══════════════════════' },
+    { 'Descripción': `📅 Fecha: ${fechaFormateada}`, 'Valor': '' },
+    { 'Descripción': `🕒 Hora: ${horaFormateada}`, 'Valor': '' },
     { 'Descripción': '', 'Valor': '' },
   ];
 
@@ -160,38 +249,36 @@ function calcularResumenMejorado(
     return sum + (p.costoReal * p.cantidad);
   }, 0);
 
-  // Resumen por cada proveedor
+  // Resumen por cada proveedor (MEJORADO - SIN total unidades)
   Object.entries(productosPorProveedor).forEach(([proveedor, productosProveedor]) => {
     const proveedorNombre = proveedor.charAt(0).toUpperCase() + proveedor.slice(1);
     const cantidadProductos = productosProveedor.length;
-    const totalUnidades = productosProveedor.reduce((sum, p) => sum + p.cantidad, 0);
     
     const valorTotal = productosProveedor.reduce((sum, p) => {
       return sum + (p.costoReal * p.cantidad);
     }, 0);
 
     resumen.push(
-      { 'Descripción': `${proveedorNombre.toUpperCase()}`, 'Valor': '' },
-      { 'Descripción': `  • Cantidad de productos`, 'Valor': cantidadProductos },
-      { 'Descripción': `  • Total unidades`, 'Valor': totalUnidades },
-      { 'Descripción': `  • TOTAL INVENTARIO ${proveedorNombre.toUpperCase()}`, 'Valor': `$${valorTotal.toLocaleString('es-CO', { minimumFractionDigits: 2 })}` },
+      { 'Descripción': `━━━ ${proveedorNombre.toUpperCase()} ━━━`, 'Valor': '' },
+      { 'Descripción': `   📦 Cantidad de productos`, 'Valor': `${cantidadProductos} productos` },
+      { 'Descripción': `   💰 TOTAL INVENTARIO`, 'Valor': `$${valorTotal.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
       { 'Descripción': '', 'Valor': '' }
     );
   });
 
-  // Gran total al final
+  // Gran total al final (con mejor formato)
   resumen.push(
-    { 'Descripción': '═══════════════════════════════', 'Valor': '═════════════════' },
-    { 'Descripción': 'GRAN TOTAL DE INVENTARIO', 'Valor': `$${valorTotalGeneral.toLocaleString('es-CO', { minimumFractionDigits: 2 })}` },
-    { 'Descripción': 'Total de productos en sistema', 'Valor': totalProductos },
-    { 'Descripción': '', 'Valor': '' },
+    { 'Descripción': '═══════════════════════════════════════', 'Valor': '═══════════════════════' },
+    { 'Descripción': '🏆 GRAN TOTAL DE INVENTARIO', 'Valor': `$${valorTotalGeneral.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+    { 'Descripción': '📊 Total de productos en sistema', 'Valor': `${totalProductos} productos` },
+    { 'Descripción': '═══════════════════════════════════════', 'Valor': '═══════════════════════' },
     { 'Descripción': '', 'Valor': '' },
   );
 
-  // Agregar resumen de productos por usuario
+  // Agregar resumen de productos por usuario (con mejor formato)
   resumen.push(
-    { 'Descripción': 'PRODUCTOS POR USUARIO', 'Valor': '' },
-    { 'Descripción': '', 'Valor': '' }
+    { 'Descripción': '👥 PRODUCTOS REGISTRADOS POR USUARIO', 'Valor': '' },
+    { 'Descripción': '───────────────────────────────────────', 'Valor': '───────────────────────' }
   );
 
   const productosPorUsuario = productos.reduce((acc, p) => {
@@ -206,9 +293,10 @@ function calcularResumenMejorado(
   Object.entries(productosPorUsuario)
     .sort((a, b) => b[1] - a[1]) // Ordenar por cantidad descendente
     .forEach(([usuario, cantidad]) => {
+      const porcentaje = ((cantidad / totalProductos) * 100).toFixed(1);
       resumen.push({
-        'Descripción': `  • ${usuario}`,
-        'Valor': `${cantidad} producto${cantidad !== 1 ? 's' : ''}`
+        'Descripción': `   👤 ${usuario}`,
+        'Valor': `${cantidad} productos (${porcentaje}%)`
       });
     });
 
@@ -225,4 +313,4 @@ export function exportarProductosSeleccionados(
 ) {
   const productosSeleccionados = productos.filter(p => idsSeleccionados.includes(p.id));
   exportarProductosAExcel(productosSeleccionados, incluirCostoReal);
-};
+}
