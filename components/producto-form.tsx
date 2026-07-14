@@ -25,6 +25,7 @@ interface Producto {
   producto: string;
   cantidad: number;
   unidades: string;
+  seccion?: string;
   costo: string;
   costoReal: number;
   precioVenta: string;
@@ -43,11 +44,13 @@ interface ProductoFormProps {
 export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarBusqueda = false }: ProductoFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | null>(null);
+  const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | 'secciones' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
+  const [secciones, setSecciones] = useState<string[]>(['CACHARRERIA']);
   const [selectedProveedor, setSelectedProveedor] = useState('');
   const [selectedUnidades, setSelectedUnidades] = useState('');
+  const [selectedSeccion, setSelectedSeccion] = useState('');
   const isEditing = !!productoToEdit;
 
   // Estados para búsqueda por referencia
@@ -73,12 +76,16 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   useEffect(() => {
     const customProveedores = localStorage.getItem('custom_proveedores');
     const customUnidades = localStorage.getItem('custom_unidades');
+    const customSecciones = localStorage.getItem('custom_secciones');
 
     if (customProveedores) {
       setProveedores(JSON.parse(customProveedores));
     }
     if (customUnidades) {
       setUnidades(JSON.parse(customUnidades));
+    }
+    if (customSecciones) {
+      setSecciones(JSON.parse(customSecciones));
     }
   }, [configModal]);
 
@@ -90,16 +97,19 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       setValue('producto', productoToEdit.producto);
       setValue('cantidad', productoToEdit.cantidad.toString());
       setValue('unidades', productoToEdit.unidades);
+      setValue('seccion', productoToEdit.seccion || '');
       setValue('costo', productoToEdit.costo);
       setValue('precioVenta', productoToEdit.precioVenta);
       setValue('codigo', productoToEdit.codigo);
       setValue('embalaje', productoToEdit.embalaje || '');
       setSelectedProveedor(productoToEdit.proveedor);
       setSelectedUnidades(productoToEdit.unidades);
+      setSelectedSeccion(productoToEdit.seccion || '');
     } else {
       reset();
       setSelectedProveedor('');
       setSelectedUnidades('');
+      setSelectedSeccion('');
     }
   }, [productoToEdit, setValue, reset]);
 
@@ -544,6 +554,43 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                     </div>
                     {errors.unidades && (
                       <p className="text-sm text-red-500">{errors.unidades.message}</p>
+                    )}
+                  </div>
+
+                  {/* Sección */}
+                  <div className="space-y-2">
+                    <Label htmlFor="seccion">Sección *</Label>
+                    <div className="flex gap-2">
+                      <Select
+                        value={selectedSeccion}
+                        onValueChange={(value) => {
+                          setValue('seccion', value);
+                          setSelectedSeccion(value);
+                        }}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Selecciona una sección" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {secciones.map((sec) => (
+                            <SelectItem key={sec} value={sec}>
+                              {sec}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setConfigModal('secciones')}
+                        title="Gestionar secciones"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {errors.seccion && (
+                      <p className="text-sm text-red-500">{errors.seccion.message}</p>
                     )}
                   </div>
 

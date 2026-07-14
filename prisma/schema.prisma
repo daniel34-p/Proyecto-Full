@@ -56,6 +56,7 @@ model Producto {
   codigo         String
   codigoBarras   String       @unique
   embalaje       String?      // Campo opcional
+  seccion        String?      // Sección del producto - opcional en BD (productos existentes no tienen valor), obligatoria en el formulario para productos nuevos
   
   // Centro de Costo - OPCIONAL al inicio para la migración
   centroCostoId  String?
@@ -75,4 +76,5 @@ model Producto {
   @@index([creadoPorId])
   @@index([referencia])
   @@index([centroCostoId])  // Importante para filtrado rápido
+  @@index([seccion])
 }

@@ -16,7 +16,7 @@ import { Plus, Trash2 } from 'lucide-react';
 interface OpcionesConfigProps {
   isOpen: boolean;
   onClose: () => void;
-  tipo: 'proveedores' | 'unidades';
+  tipo: 'proveedores' | 'unidades' | 'secciones';
 }
 
 export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
@@ -30,7 +30,7 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
   }, [isOpen, tipo]);
 
   const cargarOpciones = () => {
-    const key = tipo === 'proveedores' ? 'custom_proveedores' : 'custom_unidades';
+    const key = tipo === 'proveedores' ? 'custom_proveedores' : tipo === 'unidades' ? 'custom_unidades' : 'custom_secciones';
     const guardadas = localStorage.getItem(key);
     
     if (guardadas) {
@@ -39,14 +39,16 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
       // Valores por defecto
       if (tipo === 'proveedores') {
         setOpciones(['BODEGA', 'ALEA']);
-      } else {
+      } else if (tipo === 'unidades') {
         setOpciones(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'ROLLOS']);
+      } else {
+        setOpciones(['CACHARRERIA']);
       }
     }
   };
 
   const guardarOpciones = (nuevasOpciones: string[]) => {
-    const key = tipo === 'proveedores' ? 'custom_proveedores' : 'custom_unidades';
+    const key = tipo === 'proveedores' ? 'custom_proveedores' : tipo === 'unidades' ? 'custom_unidades' : 'custom_secciones';
     localStorage.setItem(key, JSON.stringify(nuevasOpciones));
     setOpciones(nuevasOpciones);
   };
@@ -78,7 +80,7 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
     guardarOpciones(nuevasOpciones);
   };
 
-  const titulo = tipo === 'proveedores' ? 'Gestionar Proveedores' : 'Gestionar Unidades';
+  const titulo = tipo === 'proveedores' ? 'Gestionar Proveedores' : tipo === 'unidades' ? 'Gestionar Unidades' : 'Gestionar Secciones';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -93,7 +95,7 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
         <div className="space-y-4">
           {/* Agregar nueva opción */}
           <div className="space-y-2">
-            <Label htmlFor="nueva">Nueva {tipo === 'proveedores' ? 'Proveedor' : 'Unidad'}</Label>
+            <Label htmlFor="nueva">Nueva {tipo === 'proveedores' ? 'Proveedor' : tipo === 'unidades' ? 'Unidad' : 'Sección'}</Label>
             <div className="flex gap-2">
               <Input
                 id="nueva"

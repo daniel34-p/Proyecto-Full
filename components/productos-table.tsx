@@ -40,6 +40,7 @@ interface Producto {
   producto: string;
   cantidad: number;
   unidades: string;
+  seccion?: string;
   costo: string;
   costoReal: number;
   precioVenta: string;
@@ -75,6 +76,7 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('todos');
   const [filtroUnidades, setFiltroUnidades] = useState('todos');
+  const [filtroSeccion, setFiltroSeccion] = useState('todos');
   const [filtroCreadoPor, setFiltroCreadoPor] = useState('todos');
   const [filtroCentroCosto, setFiltroCentroCosto] = useState('todos');
   const { isAdmin, isSuperAdmin } = useAuth();
@@ -106,14 +108,16 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
       producto.producto.toLowerCase().includes(search) ||
       producto.referencia.toLowerCase().includes(search) ||
       producto.proveedor.toLowerCase().includes(search) ||
-      (producto.embalaje && producto.embalaje.toLowerCase().includes(search));
+      (producto.embalaje && producto.embalaje.toLowerCase().includes(search)) ||
+      (producto.seccion && producto.seccion.toLowerCase().includes(search));
     
     const matchProveedor = filtroProveedor === 'todos' || producto.proveedor === filtroProveedor;
     const matchUnidades = filtroUnidades === 'todos' || producto.unidades === filtroUnidades;
+    const matchSeccion = filtroSeccion === 'todos' || producto.seccion === filtroSeccion;
     const matchCreadoPor = filtroCreadoPor === 'todos' || producto.creadoPor?.nombre === filtroCreadoPor;
     const matchCentroCosto = filtroCentroCosto === 'todos' || producto.centroCosto?.id === filtroCentroCosto;
     
-    return matchSearch && matchProveedor && matchUnidades && matchCreadoPor && matchCentroCosto;
+    return matchSearch && matchProveedor && matchUnidades && matchSeccion && matchCreadoPor && matchCentroCosto;
   });
 
   // Calcular paginación
@@ -138,6 +142,11 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     setPaginaActual(1);
   };
 
+  const handleFiltroSeccionChange = (value: string) => {
+    setFiltroSeccion(value);
+    setPaginaActual(1);
+  };
+
   const handleFiltroCreadoPorChange = (value: string) => {
     setFiltroCreadoPor(value);
     setPaginaActual(1);
@@ -151,6 +160,7 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
   // Obtener lista única de proveedores, unidades, usuarios y centros de costo
   const proveedoresUnicos = Array.from(new Set(productos.map(p => p.proveedor))).sort();
   const unidadesUnicas = Array.from(new Set(productos.map(p => p.unidades))).sort();
+  const seccionesUnicas = Array.from(new Set(productos.map(p => p.seccion).filter(Boolean))).sort() as string[];
   const usuariosUnicos = Array.from(
     new Set(productos.map(p => p.creadoPor?.nombre).filter(Boolean))
   ).sort() as string[];
@@ -165,13 +175,14 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     setSearchTerm('');
     setFiltroProveedor('todos');
     setFiltroUnidades('todos');
+    setFiltroSeccion('todos');
     setFiltroCreadoPor('todos');
     setFiltroCentroCosto('todos');
     setPaginaActual(1);
   };
 
   // Verificar si hay filtros activos
-  const hayFiltrosActivos = searchTerm !== '' || filtroProveedor !== 'todos' || filtroUnidades !== 'todos' || filtroCreadoPor !== 'todos' || filtroCentroCosto !== 'todos';
+  const hayFiltrosActivos = searchTerm !== '' || filtroProveedor !== 'todos' || filtroUnidades !== 'todos' || filtroSeccion !== 'todos' || filtroCreadoPor !== 'todos' || filtroCentroCosto !== 'todos';
 
   const irAPagina = (pagina: number) => {
     setPaginaActual(pagina);
@@ -242,6 +253,23 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                     {unidadesUnicas.map((unidad) => (
                       <SelectItem key={unidad} value={unidad} className="capitalize">
                         {unidad}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro Sección */}
+              <div className="md:col-span-1">
+                <Select value={filtroSeccion} onValueChange={handleFiltroSeccionChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filtrar por sección" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todas las secciones</SelectItem>
+                    {seccionesUnicas.map((sec) => (
+                      <SelectItem key={sec} value={sec}>
+                        {sec}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -326,6 +354,7 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                         <TableHead>Producto</TableHead>
                         <TableHead>Proveedor</TableHead>
                         <TableHead>Referencia</TableHead>
+                        <TableHead>Sección</TableHead>
                         <TableHead>Cantidad</TableHead>
                         <TableHead>Embalaje</TableHead>
                         <TableHead>Costo</TableHead>
@@ -355,6 +384,13 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                           <TableCell>{producto.producto}</TableCell>
                           <TableCell className="capitalize">{producto.proveedor}</TableCell>
                           <TableCell>{producto.referencia}</TableCell>
+                          <TableCell>
+                            {producto.seccion ? (
+                              <Badge variant="outline">{producto.seccion}</Badge>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {producto.cantidad} {producto.unidades}
                           </TableCell>

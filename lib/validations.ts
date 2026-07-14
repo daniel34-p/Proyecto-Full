@@ -11,6 +11,7 @@ export const productoSchema = z.object({
       return !isNaN(num) && num > 0;
     }, 'La cantidad debe ser un número positivo'),
   unidades: z.string().min(1, 'La unidad es requerida'),
+  seccion: z.string().min(1, 'La sección es requerida'),
   costo: z.string()
     .min(1, 'El costo es requerido')
     .regex(/^[HUBIERAMOShubieramos\s]+$/, 'El costo solo puede contener las letras: H, U, B, I, E, R, A, M, O, S'),

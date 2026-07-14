@@ -144,6 +144,10 @@ export async function PUT(
         producto: body.producto.toUpperCase(),
         cantidad: cantidad,
         unidades: body.unidades.toUpperCase(),
+        // Si el formulario que hace el PUT no envía "seccion" (p.ej. la edición
+        // rápida desde el producto escaneado), se conserva el valor que ya tenía
+        // el producto en vez de borrarlo.
+        seccion: body.seccion ? body.seccion.toUpperCase() : productoActual.seccion,
         costo: body.costo.toUpperCase(),
         costoReal: costoReal,
         precioVenta: body.precioVenta,

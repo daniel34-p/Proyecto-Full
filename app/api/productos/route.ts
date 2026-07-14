@@ -151,6 +151,7 @@ export async function POST(request: Request) {
         producto: body.producto.toUpperCase(),
         cantidad: cantidad,
         unidades: body.unidades.toUpperCase(),
+        seccion: body.seccion ? body.seccion.toUpperCase() : null,
         costo: body.costo.toUpperCase(),
         costoReal: costoReal,
         precioVenta: body.precioVenta,
