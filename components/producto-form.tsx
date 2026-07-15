@@ -260,10 +260,12 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       
       const method = isEditing ? 'PUT' : 'POST';
 
+      const token = localStorage.getItem('token');
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({
           ...data,

@@ -173,10 +173,12 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
         body.activo = usuarioToEdit.activo;
       }
 
+      const token = localStorage.getItem('token');
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify(body),
       });

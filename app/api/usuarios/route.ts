@@ -1,10 +1,42 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
+import { verifyToken } from '@/lib/jwt';
 
-// GET - Listar todos los usuarios
-export async function GET() {
+// Helper: valida token y que el usuario sea superadmin. Devuelve el usuario
+// autenticado o una respuesta de error lista para retornar.
+async function requireSuperAdmin(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (!token) {
+    return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) };
+  }
+
+  const payload = verifyToken(token);
+  if (!payload) {
+    return { error: NextResponse.json({ error: 'Token inválido' }, { status: 401 }) };
+  }
+
+  const usuario = await prisma.usuario.findUnique({ where: { id: payload.userId } });
+
+  if (!usuario || !usuario.activo) {
+    return { error: NextResponse.json({ error: 'Usuario no encontrado o inactivo' }, { status: 401 }) };
+  }
+
+  if (usuario.rol !== 'superadmin') {
+    return { error: NextResponse.json({ error: 'No tienes permisos para esta acción' }, { status: 403 }) };
+  }
+
+  return { usuario };
+}
+
+// GET - Listar todos los usuarios (solo SuperAdmin)
+export async function GET(request: Request) {
   try {
+    const auth = await requireSuperAdmin(request);
+    if (auth.error) return auth.error;
+
     const usuarios = await prisma.usuario.findMany({
       orderBy: {
         createdAt: 'desc'
@@ -43,9 +75,12 @@ export async function GET() {
   }
 }
 
-// POST - Crear un nuevo usuario
+// POST - Crear un nuevo usuario (solo SuperAdmin)
 export async function POST(request: Request) {
   try {
+    const auth = await requireSuperAdmin(request);
+    if (auth.error) return auth.error;
+
     const body = await request.json();
     
     // Validaciones

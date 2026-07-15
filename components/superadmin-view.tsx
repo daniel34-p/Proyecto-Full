@@ -31,7 +31,20 @@ export function SuperAdminView() {
 
   const fetchUsuarios = async () => {
     try {
-      const response = await fetch('/api/usuarios');
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/usuarios', {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error al cargar usuarios:', errorData.error);
+        setLoading(false);
+        return;
+      }
+
       const data = await response.json();
       setUsuarios(data);
     } catch (error) {
@@ -59,10 +72,12 @@ export function SuperAdminView() {
       const usuario = usuarios.find(u => u.id === id);
       if (!usuario) return;
 
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/usuarios/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({
           nombre: usuario.nombre,
@@ -90,8 +105,12 @@ export function SuperAdminView() {
     }
 
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/usuarios/${id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
       });
 
       if (!response.ok) {

@@ -1,13 +1,44 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
+import { verifyToken } from '@/lib/jwt';
 
-// PUT - Actualizar usuario
+// Helper: valida token y que el usuario sea superadmin.
+async function requireSuperAdmin(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (!token) {
+    return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) };
+  }
+
+  const payload = verifyToken(token);
+  if (!payload) {
+    return { error: NextResponse.json({ error: 'Token inválido' }, { status: 401 }) };
+  }
+
+  const usuarioAutenticado = await prisma.usuario.findUnique({ where: { id: payload.userId } });
+
+  if (!usuarioAutenticado || !usuarioAutenticado.activo) {
+    return { error: NextResponse.json({ error: 'Usuario no encontrado o inactivo' }, { status: 401 }) };
+  }
+
+  if (usuarioAutenticado.rol !== 'superadmin') {
+    return { error: NextResponse.json({ error: 'No tienes permisos para esta acción' }, { status: 403 }) };
+  }
+
+  return { usuarioAutenticado };
+}
+
+// PUT - Actualizar usuario (solo SuperAdmin)
 export async function PUT(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireSuperAdmin(request);
+    if (auth.error) return auth.error;
+
     const { id } = await context.params;
     const body = await request.json();
     
@@ -37,6 +68,23 @@ export async function PUT(
         { error: 'Admin y Asesor deben tener un centro de costo asignado' },
         { status: 400 }
       );
+    }
+
+    // Evitar que se quede el sistema sin ningún SuperAdmin activo si te
+    // degradas o desactivas a ti mismo (o a otro) siendo el último.
+    if (
+      usuarioActual.rol === 'superadmin' &&
+      (body.rol !== 'superadmin' || body.activo === false)
+    ) {
+      const countSuperAdmins = await prisma.usuario.count({
+        where: { rol: 'superadmin', activo: true },
+      });
+      if (countSuperAdmins <= 1) {
+        return NextResponse.json(
+          { error: 'No puedes quitar el rol o desactivar al último Super Admin' },
+          { status: 400 }
+        );
+      }
     }
 
     // Si tiene centro de costo, verificar que exista y esté activo
@@ -111,12 +159,15 @@ export async function PUT(
   }
 }
 
-// DELETE - Eliminar usuario
+// DELETE - Eliminar usuario (solo SuperAdmin)
 export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireSuperAdmin(request);
+    if (auth.error) return auth.error;
+
     const { id } = await context.params;
     
     // Verificar que no sea el último super admin
@@ -124,7 +175,14 @@ export async function DELETE(
       where: { id }
     });
 
-    if (usuario?.rol === 'superadmin') {
+    if (!usuario) {
+      return NextResponse.json(
+        { error: 'Usuario no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    if (usuario.rol === 'superadmin') {
       const countSuperAdmins = await prisma.usuario.count({
         where: { rol: 'superadmin', activo: true }
       });

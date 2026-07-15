@@ -99,16 +99,27 @@ export async function GET(request: Request) {
 // POST - Crear un nuevo producto
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    
-    const userId = body.userId;
-    
-    if (!userId) {
+    // Verificar token en vez de confiar en un userId enviado por el cliente
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
       return NextResponse.json(
-        { error: 'Usuario no identificado' },
+        { error: 'No autorizado' },
         { status: 401 }
       );
     }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      return NextResponse.json(
+        { error: 'Token inválido' },
+        { status: 401 }
+      );
+    }
+
+    const userId = payload.userId;
+    const body = await request.json();
 
     console.log('📦 Creando producto con código:', body.codigo);
     
