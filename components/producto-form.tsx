@@ -32,6 +32,21 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   embalaje?: string;
+  createdAt: string;
+  centroCosto?: {
+    id: string;
+    nombre: string;
+  };
+  creadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
+  editadoPor?: {
+    nombre: string;
+    email: string;
+    rol: string;
+  };
 }
 
 interface ProductoFormProps {
