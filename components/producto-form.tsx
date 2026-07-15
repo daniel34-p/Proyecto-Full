@@ -35,7 +35,7 @@ interface Producto {
 }
 
 interface ProductoFormProps {
-  onSuccess: () => void;
+  onSuccess: (producto?: Producto, wasEditing?: boolean) => void;
   productoToEdit?: Producto | null;
   onCancelEdit?: () => void;
   mostrarBusqueda?: boolean; // Nuevo prop para controlar si se muestra la búsqueda
@@ -47,7 +47,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | 'secciones' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
-  const [secciones, setSecciones] = useState<string[]>(['CACHARRERIA']);
+  const [secciones, setSecciones] = useState<string[]>(['GENERAL']);
   const [selectedProveedor, setSelectedProveedor] = useState('');
   const [selectedUnidades, setSelectedUnidades] = useState('');
   const [selectedSeccion, setSelectedSeccion] = useState('');
@@ -207,6 +207,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
         throw new Error(errorData.error || 'Error al actualizar cantidad');
       }
 
+      const productoActualizado = await response.json();
+
       // Limpiar formulario de búsqueda
       setSearchRef('');
       setProductosEncontrados([]);
@@ -214,7 +216,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       setCantidadAgregar('');
       setModoAgregar(false);
       
-      onSuccess();
+      onSuccess(productoActualizado, true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -259,11 +261,14 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
         throw new Error(errorData.error || 'Error al guardar producto');
       }
 
+      const productoGuardado = await response.json();
+
       reset();
-      onSuccess();
+      onSuccess(productoGuardado, isEditing);
       if (onCancelEdit) onCancelEdit();
       setSelectedProveedor('');
       setSelectedUnidades('');
+      setSelectedSeccion('');
     } catch (err: any) {
       setError(err.message);
     } finally {

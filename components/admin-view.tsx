@@ -19,6 +19,7 @@ interface Producto {
   producto: string;
   cantidad: number;
   unidades: string;
+  seccion?: string;
   costo: string;
   costoReal: number;
   precioVenta: string;
@@ -98,7 +99,8 @@ export function AdminView() {
         return;
       }
 
-      await fetchProductos();
+      // Actualización local: evita volver a pedir TODA la lista al servidor
+      setProductos((prev) => prev.filter((p) => p.id !== id));
       alert('Producto eliminado correctamente');
     } catch (error) {
       console.error('Error al eliminar producto:', error);
@@ -115,8 +117,18 @@ export function AdminView() {
     setProductoToEdit(null);
   };
 
-  const handleSuccess = () => {
-    fetchProductos();
+  const handleSuccess = (producto?: Producto, wasEditing?: boolean) => {
+    if (producto) {
+      // Actualización local: evita volver a pedir TODA la lista al servidor
+      setProductos((prev) =>
+        wasEditing
+          ? prev.map((p) => (p.id === producto.id ? producto : p))
+          : [producto, ...prev]
+      );
+    } else {
+      // Fallback por si el servidor no devolvió el producto
+      fetchProductos();
+    }
     setProductoToEdit(null);
   };
 

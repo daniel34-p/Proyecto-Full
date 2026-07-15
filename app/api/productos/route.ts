@@ -110,11 +110,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Obtener usuario con su centro de costo
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: userId },
-      include: { centroCosto: true }
-    });
+    console.log('📦 Creando producto con código:', body.codigo);
+    
+    // Buscar usuario y generar código de barras en paralelo (son independientes)
+    const [usuario, codigoBarras] = await Promise.all([
+      prisma.usuario.findUnique({
+        where: { id: userId },
+        include: { centroCosto: true }
+      }),
+      generarCodigoBarrasUnico(body.codigo, body.costo, prisma),
+    ]);
 
     if (!usuario) {
       return NextResponse.json(
@@ -131,13 +136,8 @@ export async function POST(request: Request) {
       );
     }
     
-    console.log('📦 Creando producto con código:', body.codigo);
-    
     // Calcular el costo real desencriptado
     const costoReal = desencriptarCosto(body.costo);
-    
-    // Generar código de barras único
-    const codigoBarras = await generarCodigoBarrasUnico(body.codigo, body.costo, prisma);
     
     console.log('🔢 Código de barras generado:', codigoBarras);
     

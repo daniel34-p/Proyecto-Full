@@ -46,8 +46,22 @@ export async function GET(
       where: { id },
       include: {
         centroCosto: true,
-        creadoPor: true,
-        editadoPor: true,
+        creadoPor: {
+          select: {
+            id: true,
+            nombre: true,
+            email: true,
+            rol: true,
+          }
+        },
+        editadoPor: {
+          select: {
+            id: true,
+            nombre: true,
+            email: true,
+            rol: true,
+          }
+        },
       }
     });
     
@@ -96,10 +110,11 @@ export async function PUT(
       );
     }
 
-    // Obtener usuario
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: userId }
-    });
+    // Obtener usuario y producto en paralelo (son consultas independientes)
+    const [usuario, productoActual] = await Promise.all([
+      prisma.usuario.findUnique({ where: { id: userId } }),
+      prisma.producto.findUnique({ where: { id } }),
+    ]);
 
     if (!usuario) {
       return NextResponse.json(
@@ -107,11 +122,6 @@ export async function PUT(
         { status: 404 }
       );
     }
-
-    // Obtener producto actual
-    const productoActual = await prisma.producto.findUnique({
-      where: { id }
-    });
 
     if (!productoActual) {
       return NextResponse.json(
@@ -225,10 +235,11 @@ export async function DELETE(
       );
     }
 
-    // Obtener usuario
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: payload.userId }
-    });
+    // Obtener usuario y producto en paralelo (son consultas independientes)
+    const [usuario, producto] = await Promise.all([
+      prisma.usuario.findUnique({ where: { id: payload.userId } }),
+      prisma.producto.findUnique({ where: { id } }),
+    ]);
 
     if (!usuario) {
       return NextResponse.json(
@@ -236,11 +247,6 @@ export async function DELETE(
         { status: 404 }
       );
     }
-
-    // Obtener producto
-    const producto = await prisma.producto.findUnique({
-      where: { id }
-    });
 
     if (!producto) {
       return NextResponse.json(
