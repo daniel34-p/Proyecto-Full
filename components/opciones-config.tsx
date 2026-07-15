@@ -42,7 +42,9 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
       } else if (tipo === 'unidades') {
         setOpciones(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'ROLLOS']);
       } else {
-        setOpciones(['CACHARRERIA']);
+        setOpciones(['HERRAJES ALEA', 'SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS', 'HERRAJES', 'NAVIDAD', 'MILLARES',
+          'ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES', 'ENCAJES', 'VARIOS', 'APLIQUES'
+        ]);
       }
     }
   };

@@ -62,7 +62,9 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | 'secciones' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
-  const [secciones, setSecciones] = useState<string[]>(['GENERAL']);
+  const [secciones, setSecciones] = useState<string[]>(['HERRAJES ALEA', 'SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS',
+          'HERRAJES', 'NAVIDAD', 'MILLARES','ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES',
+          'ENCAJES', 'VARIOS', 'APLIQUES']);
   const [selectedProveedor, setSelectedProveedor] = useState('');
   const [selectedUnidades, setSelectedUnidades] = useState('');
   const [selectedSeccion, setSelectedSeccion] = useState('');
