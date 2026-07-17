@@ -63,8 +63,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
   const [secciones, setSecciones] = useState<string[]>(['HERRAJES ALEA', 'SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS',
-          'HERRAJES', 'NAVIDAD', 'MILLARES','ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES',
-          'ENCAJES', 'VARIOS', 'APLIQUES']);
+        'HERRAJES', 'NAVIDAD', 'MILLARES','ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES',
+        'ENCAJES', 'VARIOS', 'APLIQUES']);
   const [selectedProveedor, setSelectedProveedor] = useState('');
   const [selectedUnidades, setSelectedUnidades] = useState('');
   const [selectedSeccion, setSelectedSeccion] = useState('');
@@ -144,7 +144,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/productos', {
+      const response = await fetch(`/api/productos?referencia=${encodeURIComponent(searchRef.trim())}&pageSize=100`, {
         headers: {
           'Authorization': token ? `Bearer ${token}` : '',
         },
@@ -154,10 +154,8 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
         throw new Error('Error al buscar productos');
       }
 
-      const productos = await response.json();
-      const encontrados = productos.filter(
-        (p: Producto) => p.referencia.toUpperCase() === searchRef.toUpperCase().trim()
-      );
+      const data = await response.json();
+      const encontrados: Producto[] = data.productos;
 
       if (encontrados.length > 0) {
         setProductosEncontrados(encontrados);

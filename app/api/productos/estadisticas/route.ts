@@ -1,0 +1,68 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { verifyToken } from '@/lib/jwt';
+
+// GET - Estadísticas de inventario (total de productos y valor por proveedor).
+// Se calculan trayendo solo los 3 campos numéricos necesarios (no el producto
+// completo con relaciones), para que sea liviano incluso con miles de filas.
+export async function GET(request: Request) {
+  try {
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    }
+
+    const usuario = await prisma.usuario.findUnique({ where: { id: payload.userId } });
+    if (!usuario) {
+      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
+    }
+
+    let whereClause: any = {};
+    if (usuario.rol !== 'superadmin') {
+      if (!usuario.centroCostoId) {
+        return NextResponse.json(
+          { error: 'Usuario sin centro de costo asignado' },
+          { status: 403 }
+        );
+      }
+      whereClause = { centroCostoId: usuario.centroCostoId };
+    }
+
+    const productos = await prisma.producto.findMany({
+      where: whereClause,
+      select: { proveedor: true, costoReal: true, cantidad: true },
+    });
+
+    const porProveedor: Record<string, { nombre: string; totalProductos: number; valorTotal: number }> = {};
+
+    for (const p of productos) {
+      if (!porProveedor[p.proveedor]) {
+        porProveedor[p.proveedor] = { nombre: p.proveedor, totalProductos: 0, valorTotal: 0 };
+      }
+      porProveedor[p.proveedor].totalProductos += 1;
+      porProveedor[p.proveedor].valorTotal += p.costoReal * p.cantidad;
+    }
+
+    const proveedores = Object.values(porProveedor);
+    const granTotal = proveedores.reduce((sum, p) => sum + p.valorTotal, 0);
+
+    return NextResponse.json({
+      totalProductos: productos.length,
+      proveedores,
+      granTotal,
+    });
+  } catch (error) {
+    console.error('Error al obtener estadísticas:', error);
+    return NextResponse.json(
+      { error: 'Error al obtener estadísticas' },
+      { status: 500 }
+    );
+  }
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Barcode from 'react-barcode';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +29,11 @@ export function BarcodeDisplay({
   onClose 
 }: BarcodeDisplayProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [esAndroid, setEsAndroid] = useState(false);
+
+  useEffect(() => {
+    setEsAndroid(/Android/i.test(navigator.userAgent));
+  }, []);
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -147,60 +152,122 @@ export function BarcodeDisplay({
     }, 250);
   };
 
-  const handleDownload = () => {
-    const svg = printRef.current?.querySelector('svg');
-    if (!svg) return;
+  // Divide el nombre del producto en máximo 2 líneas que quepan en el ancho
+  // disponible; si aún así no cabe, recorta la segunda línea con "...".
+  const dividirEnDosLineas = (
+    ctx: CanvasRenderingContext2D,
+    texto: string,
+    anchoMax: number
+  ): [string, string] => {
+    const palabras = texto.trim().split(/\s+/);
+    let linea1 = '';
+    let i = 0;
 
-    const canvas = document.createElement('canvas');
+    for (; i < palabras.length; i++) {
+      const intento = linea1 ? `${linea1} ${palabras[i]}` : palabras[i];
+      if (ctx.measureText(intento).width > anchoMax && linea1) break;
+      linea1 = intento;
+    }
+
+    let linea2 = palabras.slice(i).join(' ');
+
+    if (linea2 && ctx.measureText(linea2).width > anchoMax) {
+      while (linea2.length > 3 && ctx.measureText(linea2 + '...').width > anchoMax) {
+        linea2 = linea2.slice(0, -1);
+      }
+      linea2 = linea2 + '...';
+    }
+
+    return [linea1, linea2];
+  };
+
+  // Dibuja la etiqueta completa (nombre, referencia/embalaje, código de
+  // barras y código) en un canvas de 685×472px (58mm × 40mm a ~300 DPI).
+  // Usada tanto por "Descargar PNG" como por "Imprimir Bluetooth", para que
+  // ambas salidas se vean siempre igual y cualquier ajuste futuro solo se
+  // haga en un solo lugar.
+  const dibujarEtiquetaEnCanvas = (canvas: HTMLCanvasElement, img: HTMLImageElement) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // 58mm × 40mm a 300 DPI = 685px × 472px
     canvas.width = 685;
     canvas.height = 472;
 
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'black';
+    ctx.textAlign = 'center';
 
+    // Márgenes asimétricos: más margen a la izquierda que a la derecha para
+    // recorrer todo el contenido hacia la derecha dentro de la etiqueta.
+    // Si necesitas correrlo aún más, sube "margenIzquierdo" o baja "margenDerecho".
+    const margenIzquierdo = 80;
+    const margenDerecho = 40;
+    const anchoUtil = canvas.width - margenIzquierdo - margenDerecho;
+    const centroX = margenIzquierdo + anchoUtil / 2;
+
+    // Nombre del producto: fuente grande, hasta 2 líneas
+    ctx.font = 'bold 48px Arial';
+    const [linea1, linea2] = dividirEnDosLineas(ctx, producto, anchoUtil);
+    let yPos = 42;
+    ctx.fillText(linea1, centroX, yPos);
+    yPos += 42;
+    if (linea2) {
+      ctx.fillText(linea2, centroX, yPos);
+      yPos += 42;
+    }
+    yPos += 6;
+
+    // Referencia / Embalaje
+    if (embalaje || referencia) {
+      ctx.font = '600 38px Arial';
+      const infoExtra = [];
+      if (referencia) infoExtra.push(`Ref: ${referencia}`);
+      if (embalaje) infoExtra.push(`Emb: ${embalaje}`);
+      ctx.fillText(infoExtra.join('   |   '), centroX, yPos);
+      yPos += 42;
+    } else {
+      yPos += 10;
+    }
+
+    // Código de barras (usa el espacio restante, dejando solo lo mínimo
+    // reservado para el texto del código, que ahora va pegado justo debajo)
+    const espacioMinCodigo = 42;
+    const alturaDisponibleBarcode = canvas.height - yPos - espacioMinCodigo;
+    const scale = Math.min(
+      anchoUtil / img.width,
+      alturaDisponibleBarcode / img.height
+    );
+    const barcodeX = margenIzquierdo + (anchoUtil - img.width * scale) / 2;
+    ctx.drawImage(img, barcodeX, yPos, img.width * scale, img.height * scale);
+    const barcodeBottomY = yPos + img.height * scale;
+
+    // Código debajo, grande, en negrita y pegado al código de barras
+    ctx.font = 'bold 40px Arial';
+    const codigoY = Math.min(barcodeBottomY + 60, canvas.height - 10);
+    ctx.fillText(codigo, centroX, codigoY);
+  };
+
+  // Carga el SVG del código de barras como imagen y ejecuta el callback con
+  // el canvas ya dibujado, listo para descargar o enviar a RawBT.
+  const generarEtiquetaCanvas = (onListo: (canvas: HTMLCanvasElement) => void) => {
+    const svg = printRef.current?.querySelector('svg');
+    if (!svg) return;
+
+    const canvas = document.createElement('canvas');
     const svgData = new XMLSerializer().serializeToString(svg);
     const img = new Image();
-    
+
     img.onload = () => {
-      ctx.fillStyle = 'black';
-      ctx.textAlign = 'center';
-      
-      let yPos = 30;
-      
-      // Nombre del producto
-      ctx.font = 'bold 14px Arial';
-      const productText = producto.length > 45 ? producto.substring(0, 45) + '...' : producto;
-      ctx.fillText(productText, canvas.width / 2, yPos);
-      yPos += 20;
-      
-      // Embalaje y referencia
-      if (embalaje || referencia) {
-        ctx.font = '11px Arial';
-        const infoExtra = [];
-        if (referencia) infoExtra.push(`Ref: ${referencia}`);
-        if (embalaje) infoExtra.push(`Emb: ${embalaje}`);
-        ctx.fillText(infoExtra.join(' | '), canvas.width / 2, yPos);
-        yPos += 25;
-      } else {
-        yPos += 15;
-      }
-      
-      // Código de barras
-      const scale = Math.min(
-        (canvas.width - 40) / img.width,
-        (canvas.height - yPos - 80) / img.height
-      );
-      const x = (canvas.width - img.width * scale) / 2;
-      ctx.drawImage(img, x, yPos, img.width * scale, img.height * scale);
-      
-      // Código debajo
-      ctx.font = 'bold 16px Arial';
-      ctx.fillText(codigo, canvas.width / 2, canvas.height - 25);
-      
+      dibujarEtiquetaEnCanvas(canvas, img);
+      onListo(canvas);
+    };
+
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  };
+
+  const handleDownload = () => {
+    generarEtiquetaCanvas((canvas) => {
       canvas.toBlob((blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
@@ -210,9 +277,18 @@ export function BarcodeDisplay({
         a.click();
         URL.revokeObjectURL(url);
       });
-    };
+    });
+  };
 
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  // Genera la misma etiqueta y la envía directamente a RawBT para imprimir
+  // por Bluetooth en el celular.
+  const handleImprimirBluetooth = () => {
+    generarEtiquetaCanvas((canvas) => {
+      // RawBT acepta un data URI estándar de imagen con el prefijo "rawbt:".
+      // Documentación oficial: rawbt:data:image/png;base64,<...>
+      const dataUrl = canvas.toDataURL('image/png');
+      window.location.href = 'rawbt:' + dataUrl;
+    });
   };
 
   return (
@@ -233,7 +309,7 @@ export function BarcodeDisplay({
               width: '58mm',
               height: '40mm',
               background: 'white',
-              padding: '3mm 2mm',
+              padding: '1mm 2mm',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
@@ -249,9 +325,9 @@ export function BarcodeDisplay({
             }}>
               {/* Nombre del producto */}
               <div style={{ 
-                fontSize: '8pt',
+                fontSize: '10pt',
                 fontWeight: 'bold',
-                lineHeight: '1.2',
+                lineHeight: '1.4',
                 maxWidth: '50mm',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -267,7 +343,7 @@ export function BarcodeDisplay({
               {/* Embalaje y Referencia */}
               {(embalaje || referencia) && (
               <div style={{
-                fontSize: '8pt',
+                fontSize: '9pt',
                 fontWeight: 600,
                 color: '#000',
                 marginBottom: '2mm',
@@ -287,19 +363,21 @@ export function BarcodeDisplay({
               display: 'flex',
               justifyContent: 'center'
             }}>
-              <Barcode
-                value={codigo}
-                format="CODE128"
-                width={1.25}           // Perfecto para no salirse
-                height={46}         // Más alto para escaneo
-                displayValue={false}
-                margin={0}
-              />
+              {codigo && (
+                <Barcode
+                  value={codigo}
+                  format="CODE128"
+                  width={1.8}           // Perfecto para no salirse
+                  height={72}         // Más alto para escaneo
+                  displayValue={false}
+                  margin={0}
+                />
+              )}
             </div>
 
             {/* Código debajo */}
             <div style={{ 
-              fontSize: '9pt', 
+              fontSize: '11pt', 
               fontWeight: 'bold',
               textAlign: 'center',
               marginTop: '1mm',
@@ -311,13 +389,19 @@ export function BarcodeDisplay({
         </div>
 
         <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-800">
-          <p className="font-semibold mb-1">📏 Configuración de etiqueta:</p>
-          <p>• Tamaño: 58mm (ancho) × 40mm (alto)</p>
-          <p>• Orientación: Horizontal</p>
-          <p>• Producto, Ref y Embalaje arriba | Código debajo</p>
+          <p className="font-semibold mb-1"> 🖨️ Configuración de impresión 🖨️</p>
+          <p>• Para Dispositivos Móviles Presionar El Boton:</p>
+          <p>*** IMPRIMIR ETIQUETA ***</p>
+          <p>• Para Dispositivos Escritorio Presionar El Boton:</p>
+          <p>*** IMPRIMIR ***</p>
         </div>
 
-        <div className="flex gap-2 justify-end mt-4">
+        <div className="flex gap-2 justify-end mt-4 flex-wrap">
+          {esAndroid && (
+            <Button onClick={handleImprimirBluetooth} size="sm" className="bg-blue-600 hover:bg-blue-700">
+              🏷️ Imprimir Etiqueta
+            </Button>
+          )}
           <Button onClick={handlePrint} size="sm">
             🖨️ Imprimir
           </Button>

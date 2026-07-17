@@ -2,44 +2,33 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-interface Producto {
-  id: string;
-  proveedor: string;
-  referencia: string;
-  producto: string;
-  cantidad: number;
-  unidades: string;
-  costo: string;
-  costoReal: number;
-  precioVenta: string;
-  codigo: string;
-  codigoBarras: string;
-  createdAt: string;
-  creadoPor?: {
-    nombre: string;
-    email: string;
-    rol: string;
-  };
-  editadoPor?: {
-    nombre: string;
-    email: string;
-    rol: string;
-  };
+interface ProveedorStat {
+  nombre: string;
+  totalProductos: number;
+  valorTotal: number;
+}
+
+interface Estadisticas {
+  totalProductos: number;
+  proveedores: ProveedorStat[];
+  granTotal: number;
 }
 
 interface InventoryStatsProps {
-  productos: Producto[];
+  estadisticas: Estadisticas | null;
+  loading?: boolean;
 }
 
-export function InventoryStats({ productos }: InventoryStatsProps) {
+export function InventoryStats({ estadisticas, loading }: InventoryStatsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [mostrarMontos, setMostrarMontos] = useState(() => {
     // Cargar preferencia del localStorage
+    if (typeof window === 'undefined') return true;
     const saved = localStorage.getItem('mostrarMontos');
     return saved !== null ? JSON.parse(saved) : true;
   });
@@ -49,34 +38,9 @@ export function InventoryStats({ productos }: InventoryStatsProps) {
     localStorage.setItem('mostrarMontos', JSON.stringify(mostrarMontos));
   }, [mostrarMontos]);
 
-  // Calcular estadísticas por proveedor (con validación inline)
-  const proveedoresStats = Array.isArray(productos)
-    ? productos.reduce((acc, producto) => {
-        const proveedor = producto.proveedor;
-        
-        if (!acc[proveedor]) {
-          acc[proveedor] = {
-            nombre: proveedor,
-            totalProductos: 0,
-            valorTotal: 0, // Costo Real × Cantidad
-          };
-        }
-        
-        acc[proveedor].totalProductos += 1;
-        const costoTotal = producto.costoReal * producto.cantidad;
-        acc[proveedor].valorTotal += costoTotal;
-        
-        return acc;
-      }, {} as Record<string, { nombre: string; totalProductos: number; valorTotal: number }>)
-    : {};
-
-  const proveedoresArray = Object.values(proveedoresStats);
-  const totalProductos = Array.isArray(productos) ? productos.length : 0;
-  
-  // Calcular Gran Total (suma de todos los proveedores)
-  const granTotal = proveedoresArray.reduce((sum, proveedor) => {
-    return sum + proveedor.valorTotal;
-  }, 0);
+  const proveedoresArray = estadisticas?.proveedores || [];
+  const totalProductos = estadisticas?.totalProductos || 0;
+  const granTotal = estadisticas?.granTotal || 0;
 
   // Verificar si se puede hacer scroll
   const checkScroll = () => {
@@ -123,7 +87,8 @@ export function InventoryStats({ productos }: InventoryStatsProps) {
   return (
     <div className="relative">
       {/* Botón de ocultar/mostrar montos */}
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end mb-4 items-center gap-2">
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
         <Button
           variant="outline"
           size="sm"
@@ -230,7 +195,7 @@ export function InventoryStats({ productos }: InventoryStatsProps) {
         )}
 
         {/* Mensaje si no hay proveedores */}
-        {proveedoresArray.length === 0 && (
+        {proveedoresArray.length === 0 && !loading && (
           <Card className="min-w-[300px] flex-shrink-0">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">

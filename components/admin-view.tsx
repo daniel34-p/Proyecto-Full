@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ProductoForm } from '@/components/producto-form';
 import { ProductosTable } from '@/components/productos-table';
 import { InventoryStats } from '@/components/inventory-stats';
@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ScannedProductView } from '@/components/scanned-product-view';
-import { Camera, Download, Building2 } from 'lucide-react';
+import { Camera, Download, Building2, Loader2 } from 'lucide-react';
 import { exportarProductosAExcel } from '@/lib/excel-export';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
@@ -43,21 +43,77 @@ interface Producto {
   };
 }
 
+interface QueryState {
+  page: number;
+  pageSize: number;
+  search: string;
+  proveedor: string;
+  unidades: string;
+  seccion: string;
+  creadoPorId: string;
+  centroCostoId: string;
+}
+
+const QUERY_INICIAL: QueryState = {
+  page: 1,
+  pageSize: 50,
+  search: '',
+  proveedor: 'todos',
+  unidades: 'todos',
+  seccion: 'todos',
+  creadoPorId: 'todos',
+  centroCostoId: 'todos',
+};
+
 export function AdminView() {
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [paginacion, setPaginacion] = useState({ page: 1, pageSize: 50, total: 0, totalPages: 1 });
+  const [queryState, setQueryState] = useState<QueryState>(QUERY_INICIAL);
+  const [loadingProductos, setLoadingProductos] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [exportando, setExportando] = useState(false);
+
+  const [opciones, setOpciones] = useState({
+    proveedores: [] as string[],
+    unidades: [] as string[],
+    secciones: [] as string[],
+    creadores: [] as { id: string; nombre: string }[],
+    centrosCosto: [] as { id: string; nombre: string }[],
+  });
+  const [estadisticas, setEstadisticas] = useState<{
+    totalProductos: number;
+    proveedores: { nombre: string; totalProductos: number; valorTotal: number }[];
+    granTotal: number;
+  } | null>(null);
+
   const [productoToEdit, setProductoToEdit] = useState<Producto | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Producto | null>(null);
   const { user, logout, centroCosto } = useAuth();
 
-  const fetchProductos = async () => {
+  const authHeaders = () => {
+    const token = localStorage.getItem('token');
+    return { 'Authorization': token ? `Bearer ${token}` : '' };
+  };
+
+  const buildQueryString = (q: QueryState) => {
+    const params = new URLSearchParams();
+    params.set('page', String(q.page));
+    params.set('pageSize', String(q.pageSize));
+    if (q.search) params.set('search', q.search);
+    if (q.proveedor !== 'todos') params.set('proveedor', q.proveedor);
+    if (q.unidades !== 'todos') params.set('unidades', q.unidades);
+    if (q.seccion !== 'todos') params.set('seccion', q.seccion);
+    if (q.creadoPorId !== 'todos') params.set('creadoPorId', q.creadoPorId);
+    if (q.centroCostoId !== 'todos') params.set('centroCostoId', q.centroCostoId);
+    return params.toString();
+  };
+
+  const fetchProductos = useCallback(async (q: QueryState) => {
+    setLoadingProductos(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/productos', {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
+      const response = await fetch(`/api/productos?${buildQueryString(q)}`, {
+        headers: authHeaders(),
       });
 
       if (!response.ok) {
@@ -69,28 +125,73 @@ export function AdminView() {
       }
 
       const data = await response.json();
-      setProductos(data);
+      setProductos(data.productos);
+      setPaginacion(data.pagination);
     } catch (error) {
       console.error('Error al cargar productos:', error);
     } finally {
-      setLoading(false);
+      setLoadingProductos(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchOpciones = useCallback(async () => {
+    try {
+      const response = await fetch('/api/productos/filtros', { headers: authHeaders() });
+      if (!response.ok) return;
+      const data = await response.json();
+      setOpciones((prev) => ({ ...prev, ...data }));
+    } catch (error) {
+      console.error('Error al cargar opciones de filtro:', error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchEstadisticas = useCallback(async () => {
+    setLoadingStats(true);
+    try {
+      const response = await fetch('/api/productos/estadisticas', { headers: authHeaders() });
+      if (!response.ok) return;
+      const data = await response.json();
+      setEstadisticas(data);
+    } catch (error) {
+      console.error('Error al cargar estadísticas:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cargar productos cada vez que cambian filtros/página
+  useEffect(() => {
+    fetchProductos(queryState);
+  }, [queryState, fetchProductos]);
+
+  // Cargar opciones de filtro y estadísticas una sola vez al montar
+  useEffect(() => {
+    fetchOpciones();
+    fetchEstadisticas();
+  }, [fetchOpciones, fetchEstadisticas]);
+
+  const handleFiltrosChange = (parcial: Partial<QueryState>) => {
+    setQueryState((prev) => ({ ...prev, ...parcial, page: 1 }));
   };
 
-  useEffect(() => {
-    fetchProductos();
-  }, []);
+  const handleLimpiarFiltros = () => {
+    setQueryState(QUERY_INICIAL);
+  };
+
+  const handlePageChange = (page: number) => {
+    setQueryState((prev) => ({ ...prev, page }));
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
 
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`/api/productos/${encodeURIComponent(id)}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
+        headers: authHeaders(),
       });
 
       if (!response.ok) {
@@ -99,8 +200,8 @@ export function AdminView() {
         return;
       }
 
-      // Actualización local: evita volver a pedir TODA la lista al servidor
-      setProductos((prev) => prev.filter((p) => p.id !== id));
+      // Recargamos solo la página actual (rápido) y las estadísticas
+      await Promise.all([fetchProductos(queryState), fetchEstadisticas()]);
       alert('Producto eliminado correctamente');
     } catch (error) {
       console.error('Error al eliminar producto:', error);
@@ -117,28 +218,37 @@ export function AdminView() {
     setProductoToEdit(null);
   };
 
-  const handleSuccess = (producto?: Producto, wasEditing?: boolean) => {
-    if (producto) {
-      // Actualización local: evita volver a pedir TODA la lista al servidor
-      setProductos((prev) =>
-        wasEditing
-          ? prev.map((p) => (p.id === producto.id ? producto : p))
-          : [producto, ...prev]
-      );
-    } else {
-      // Fallback por si el servidor no devolvió el producto
-      fetchProductos();
-    }
+  const handleSuccess = async () => {
+    // Recargamos solo la página/filtro actual, no todo el catálogo
+    await Promise.all([fetchProductos(queryState), fetchEstadisticas(), fetchOpciones()]);
     setProductoToEdit(null);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-lg">Cargando...</p>
-      </div>
-    );
-  }
+  const handleExportar = async () => {
+    setExportando(true);
+    try {
+      // Para exportar sí necesitamos todos los productos que cumplen el
+      // filtro actual (no solo la página visible), pero es una acción
+      // explícita del usuario, no algo que ocurra en cada carga de pantalla.
+      const q = { ...queryState, page: 1, pageSize: Math.max(paginacion.total, 1) };
+      const response = await fetch(`/api/productos?${buildQueryString(q)}`, {
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        alert('Error al preparar la exportación');
+        return;
+      }
+
+      const data = await response.json();
+      exportarProductosAExcel(data.productos, true);
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      alert('Error al exportar productos');
+    } finally {
+      setExportando(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -169,14 +279,18 @@ export function AdminView() {
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <Button
                 variant="outline"
-                onClick={() => exportarProductosAExcel(productos, true)}
+                onClick={handleExportar}
                 className="flex items-center gap-2 flex-1 sm:flex-none"
-                disabled={productos.length === 0}
+                disabled={paginacion.total === 0 || exportando}
                 size="sm"
               >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Exportar</span>
-                <span className="sm:hidden">Excel</span>
+                {exportando ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                <span className="hidden sm:inline">{exportando ? 'Exportando...' : 'Exportar'}</span>
+                <span className="sm:hidden">{exportando ? '...' : 'Excel'}</span>
               </Button>
               <Button
                 variant="outline"
@@ -206,7 +320,7 @@ export function AdminView() {
       <main className="p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
           {/* Estadísticas */}
-          <InventoryStats productos={productos} />
+          <InventoryStats estadisticas={estadisticas} loading={loadingStats} />
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 sm:gap-8">
             {/* Formulario */}
@@ -224,6 +338,13 @@ export function AdminView() {
                 productos={productos}
                 onDelete={handleDelete}
                 onEdit={handleEdit}
+                loading={loadingProductos}
+                filtros={queryState}
+                onFiltrosChange={handleFiltrosChange}
+                onLimpiarFiltros={handleLimpiarFiltros}
+                opciones={opciones}
+                paginacion={paginacion}
+                onPageChange={handlePageChange}
               />
             </div>
           </div>
@@ -245,7 +366,10 @@ export function AdminView() {
         producto={scannedProduct}
         isOpen={!!scannedProduct}
         onClose={() => setScannedProduct(null)}
-        onUpdate={fetchProductos}
+        onUpdate={() => {
+          fetchProductos(queryState);
+          fetchEstadisticas();
+        }}
       />
     </div>
   );

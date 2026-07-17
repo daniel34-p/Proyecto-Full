@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Table,
   TableBody,
@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X, Building2 } from 'lucide-react';
+import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X, Building2, Loader2 } from 'lucide-react';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
@@ -64,21 +64,55 @@ interface Producto {
   };
 }
 
-interface ProductosTableProps {
-  productos: Producto[];
-  onDelete: (id: string) => void;
-  onEdit: (producto: Producto) => void;
+interface OpcionesFiltro {
+  proveedores: string[];
+  unidades: string[];
+  secciones: string[];
+  creadores: { id: string; nombre: string }[];
+  centrosCosto: { id: string; nombre: string }[];
 }
 
-const ITEMS_POR_PAGINA = 13;
+interface Paginacion {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
 
-export function ProductosTable({ productos, onDelete, onEdit }: ProductosTableProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filtroProveedor, setFiltroProveedor] = useState('todos');
-  const [filtroUnidades, setFiltroUnidades] = useState('todos');
-  const [filtroSeccion, setFiltroSeccion] = useState('todos');
-  const [filtroCreadoPor, setFiltroCreadoPor] = useState('todos');
-  const [filtroCentroCosto, setFiltroCentroCosto] = useState('todos');
+interface Filtros {
+  search: string;
+  proveedor: string;
+  unidades: string;
+  seccion: string;
+  creadoPorId: string;
+  centroCostoId: string;
+}
+
+interface ProductosTableProps {
+  productos: Producto[]; // Solo la página actual (ya viene filtrada/paginada del servidor)
+  onDelete: (id: string) => void;
+  onEdit: (producto: Producto) => void;
+  loading: boolean;
+  filtros: Filtros;
+  onFiltrosChange: (filtros: Partial<Filtros>) => void;
+  onLimpiarFiltros: () => void;
+  opciones: OpcionesFiltro;
+  paginacion: Paginacion;
+  onPageChange: (page: number) => void;
+}
+
+export function ProductosTable({
+  productos,
+  onDelete,
+  onEdit,
+  loading,
+  filtros,
+  onFiltrosChange,
+  onLimpiarFiltros,
+  opciones,
+  paginacion,
+  onPageChange,
+}: ProductosTableProps) {
   const { isAdmin, isSuperAdmin } = useAuth();
   const [barcodeModal, setBarcodeModal] = useState<{
     isOpen: boolean;
@@ -93,103 +127,40 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     embalaje: undefined,
     referencia: undefined,
   });
-  const [paginaActual, setPaginaActual] = useState(1);
 
-  // Validar que productos sea un array
-  if (!Array.isArray(productos)) {
-    productos = [];
-  }
+  // Input de búsqueda local con debounce, para no disparar una petición
+  // al servidor en cada tecla presionada.
+  const [searchInput, setSearchInput] = useState(filtros.search);
 
-  // Filtrar productos según el término de búsqueda y filtros
-  const filteredProductos = productos.filter((producto) => {
-    const search = searchTerm.toLowerCase();
-    const matchSearch = 
-      producto.codigo.toLowerCase().includes(search) ||
-      producto.producto.toLowerCase().includes(search) ||
-      producto.referencia.toLowerCase().includes(search) ||
-      producto.proveedor.toLowerCase().includes(search) ||
-      (producto.embalaje && producto.embalaje.toLowerCase().includes(search)) ||
-      (producto.seccion && producto.seccion.toLowerCase().includes(search));
-    
-    const matchProveedor = filtroProveedor === 'todos' || producto.proveedor === filtroProveedor;
-    const matchUnidades = filtroUnidades === 'todos' || producto.unidades === filtroUnidades;
-    const matchSeccion = filtroSeccion === 'todos' || producto.seccion === filtroSeccion;
-    const matchCreadoPor = filtroCreadoPor === 'todos' || producto.creadoPor?.nombre === filtroCreadoPor;
-    const matchCentroCosto = filtroCentroCosto === 'todos' || producto.centroCosto?.id === filtroCentroCosto;
-    
-    return matchSearch && matchProveedor && matchUnidades && matchSeccion && matchCreadoPor && matchCentroCosto;
-  });
+  useEffect(() => {
+    setSearchInput(filtros.search);
+  }, [filtros.search]);
 
-  // Calcular paginación
-  const totalPaginas = Math.ceil(filteredProductos.length / ITEMS_POR_PAGINA);
-  const indiceInicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
-  const indiceFin = indiceInicio + ITEMS_POR_PAGINA;
-  const productosEnPagina = filteredProductos.slice(indiceInicio, indiceFin);
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (searchInput !== filtros.search) {
+        onFiltrosChange({ search: searchInput });
+      }
+    }, 400);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
 
-  // Resetear a página 1 cuando cambia la búsqueda o filtros
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    setPaginaActual(1);
-  };
-
-  const handleFiltroProveedorChange = (value: string) => {
-    setFiltroProveedor(value);
-    setPaginaActual(1);
-  };
-
-  const handleFiltroUnidadesChange = (value: string) => {
-    setFiltroUnidades(value);
-    setPaginaActual(1);
-  };
-
-  const handleFiltroSeccionChange = (value: string) => {
-    setFiltroSeccion(value);
-    setPaginaActual(1);
-  };
-
-  const handleFiltroCreadoPorChange = (value: string) => {
-    setFiltroCreadoPor(value);
-    setPaginaActual(1);
-  };
-
-  const handleFiltroCentroCostoChange = (value: string) => {
-    setFiltroCentroCosto(value);
-    setPaginaActual(1);
-  };
-
-  // Obtener lista única de proveedores, unidades, usuarios y centros de costo
-  const proveedoresUnicos = Array.from(new Set(productos.map(p => p.proveedor))).sort();
-  const unidadesUnicas = Array.from(new Set(productos.map(p => p.unidades))).sort();
-  const seccionesUnicas = Array.from(new Set(productos.map(p => p.seccion).filter(Boolean))).sort() as string[];
-  const usuariosUnicos = Array.from(
-    new Set(productos.map(p => p.creadoPor?.nombre).filter(Boolean))
-  ).sort() as string[];
-  const centrosCostoUnicos = Array.from(
-    new Set(productos.map(p => p.centroCosto).filter(Boolean))
-  ).filter((centro, index, self) => 
-    index === self.findIndex((c) => c?.id === centro?.id)
-  ) as Array<{ id: string; nombre: string }>;
-
-  // Función para limpiar todos los filtros
-  const limpiarFiltros = () => {
-    setSearchTerm('');
-    setFiltroProveedor('todos');
-    setFiltroUnidades('todos');
-    setFiltroSeccion('todos');
-    setFiltroCreadoPor('todos');
-    setFiltroCentroCosto('todos');
-    setPaginaActual(1);
-  };
-
-  // Verificar si hay filtros activos
-  const hayFiltrosActivos = searchTerm !== '' || filtroProveedor !== 'todos' || filtroUnidades !== 'todos' || filtroSeccion !== 'todos' || filtroCreadoPor !== 'todos' || filtroCentroCosto !== 'todos';
+  const hayFiltrosActivos =
+    filtros.search !== '' ||
+    filtros.proveedor !== 'todos' ||
+    filtros.unidades !== 'todos' ||
+    filtros.seccion !== 'todos' ||
+    filtros.creadoPorId !== 'todos' ||
+    filtros.centroCostoId !== 'todos';
 
   const irAPagina = (pagina: number) => {
-    setPaginaActual(pagina);
+    onPageChange(pagina);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (productos.length === 0) {
+  // Estado totalmente vacío: no hay productos en el sistema y no hay filtros aplicados
+  if (!loading && paginacion.total === 0 && !hayFiltrosActivos) {
     return (
       <Card>
         <CardHeader>
@@ -204,12 +175,18 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
     );
   }
 
+  const indiceInicio = (paginacion.page - 1) * paginacion.pageSize;
+  const indiceFin = indiceInicio + productos.length;
+
   return (
     <Card>
       <CardHeader>
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <CardTitle>Lista de Productos ({filteredProductos.length})</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Lista de Productos ({paginacion.total})
+              {loading && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+            </CardTitle>
           </div>
           
           {/* Filtros y búsqueda */}
@@ -219,21 +196,21 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
               <div className="md:col-span-1">
                 <Input
                   placeholder="Buscar por código, nombre..."
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="w-full"
                 />
               </div>
               
               {/* Filtro Proveedor */}
               <div className="md:col-span-1">
-                <Select value={filtroProveedor} onValueChange={handleFiltroProveedorChange}>
+                <Select value={filtros.proveedor} onValueChange={(v) => onFiltrosChange({ proveedor: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Filtrar por proveedor" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos los proveedores</SelectItem>
-                    {proveedoresUnicos.map((prov) => (
+                    {opciones.proveedores.map((prov) => (
                       <SelectItem key={prov} value={prov} className="capitalize">
                         {prov}
                       </SelectItem>
@@ -244,13 +221,13 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
               
               {/* Filtro Unidades */}
               <div className="md:col-span-1">
-                <Select value={filtroUnidades} onValueChange={handleFiltroUnidadesChange}>
+                <Select value={filtros.unidades} onValueChange={(v) => onFiltrosChange({ unidades: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Filtrar por unidad" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todas las unidades</SelectItem>
-                    {unidadesUnicas.map((unidad) => (
+                    {opciones.unidades.map((unidad) => (
                       <SelectItem key={unidad} value={unidad} className="capitalize">
                         {unidad}
                       </SelectItem>
@@ -261,13 +238,13 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
 
               {/* Filtro Sección */}
               <div className="md:col-span-1">
-                <Select value={filtroSeccion} onValueChange={handleFiltroSeccionChange}>
+                <Select value={filtros.seccion} onValueChange={(v) => onFiltrosChange({ seccion: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Filtrar por sección" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todas las secciones</SelectItem>
-                    {seccionesUnicas.map((sec) => (
+                    {opciones.secciones.map((sec) => (
                       <SelectItem key={sec} value={sec}>
                         {sec}
                       </SelectItem>
@@ -277,15 +254,15 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
               </div>
 
               {/* Filtro Centro de Costo - Solo visible para SuperAdmin */}
-              {isSuperAdmin && centrosCostoUnicos.length > 0 && (
+              {isSuperAdmin && opciones.centrosCosto.length > 0 && (
                 <div className="md:col-span-1">
-                  <Select value={filtroCentroCosto} onValueChange={handleFiltroCentroCostoChange}>
+                  <Select value={filtros.centroCostoId} onValueChange={(v) => onFiltrosChange({ centroCostoId: v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Filtrar por centro" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos los centros</SelectItem>
-                      {centrosCostoUnicos.map((centro) => (
+                      {opciones.centrosCosto.map((centro) => (
                         <SelectItem key={centro.id} value={centro.id}>
                           {centro.nombre}
                         </SelectItem>
@@ -298,15 +275,15 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
               {/* Filtro Creado Por - Solo visible para admins */}
               {isAdmin && (
                 <div className="md:col-span-1">
-                  <Select value={filtroCreadoPor} onValueChange={handleFiltroCreadoPorChange}>
+                  <Select value={filtros.creadoPorId} onValueChange={(v) => onFiltrosChange({ creadoPorId: v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Filtrar por usuario" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos los usuarios</SelectItem>
-                      {usuariosUnicos.map((usuario) => (
-                        <SelectItem key={usuario} value={usuario}>
-                          {usuario}
+                      {opciones.creadores.map((usuario) => (
+                        <SelectItem key={usuario.id} value={usuario.id}>
+                          {usuario.nombre}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -321,7 +298,10 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={limpiarFiltros}
+                  onClick={() => {
+                    setSearchInput('');
+                    onLimpiarFiltros();
+                  }}
                   className="text-xs"
                 >
                   <X className="h-3 w-3 mr-1" />
@@ -333,12 +313,12 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
         </div>
       </CardHeader>
       <CardContent>
-        {filteredProductos.length === 0 ? (
+        {paginacion.total === 0 ? (
           <p className="text-center text-gray-500 py-8 text-sm">
-            No se encontraron productos con &quot;{searchTerm}&quot;
+            No se encontraron productos con los filtros aplicados
           </p>
         ) : (
-          <>
+          <div className={loading ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
             {/* Mensaje informativo en móvil */}
             <div className="block lg:hidden mb-4 p-3 bg-blue-50 rounded-md text-xs text-blue-700">
               💡 Desliza horizontalmente para ver más columnas
@@ -378,7 +358,7 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {productosEnPagina.map((producto) => (
+                      {productos.map((producto) => (
                         <TableRow key={producto.id}>
                           <TableCell className="font-medium">{producto.codigo}</TableCell>
                           <TableCell>{producto.producto}</TableCell>
@@ -472,48 +452,49 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
             </div>
 
             {/* Paginación */}
-            {totalPaginas > 1 && (
+            {paginacion.totalPages > 1 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
                 <div className="text-sm text-gray-600">
-                  Mostrando {indiceInicio + 1} a {Math.min(indiceFin, filteredProductos.length)} de {filteredProductos.length} productos
+                  Mostrando {indiceInicio + 1} a {indiceFin} de {paginacion.total} productos
                 </div>
                 
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => irAPagina(paginaActual - 1)}
-                    disabled={paginaActual === 1}
+                    onClick={() => irAPagina(paginacion.page - 1)}
+                    disabled={paginacion.page === 1 || loading}
                   >
                     <ChevronLeft className="h-4 w-4" />
                     <span className="hidden sm:inline ml-1">Anterior</span>
                   </Button>
 
                   <div className="flex gap-1">
-                    {[...Array(totalPaginas)].map((_, index) => {
+                    {[...Array(paginacion.totalPages)].map((_, index) => {
                       const numeroPagina = index + 1;
                       
                       // Mostrar solo algunas páginas en móvil
-                      if (totalPaginas > 7) {
+                      if (paginacion.totalPages > 7) {
                         if (
                           numeroPagina === 1 ||
-                          numeroPagina === totalPaginas ||
-                          (numeroPagina >= paginaActual - 1 && numeroPagina <= paginaActual + 1)
+                          numeroPagina === paginacion.totalPages ||
+                          (numeroPagina >= paginacion.page - 1 && numeroPagina <= paginacion.page + 1)
                         ) {
                           return (
                             <Button
                               key={numeroPagina}
-                              variant={paginaActual === numeroPagina ? 'default' : 'outline'}
+                              variant={paginacion.page === numeroPagina ? 'default' : 'outline'}
                               size="sm"
                               onClick={() => irAPagina(numeroPagina)}
+                              disabled={loading}
                               className="w-8 h-8 p-0"
                             >
                               {numeroPagina}
                             </Button>
                           );
                         } else if (
-                          numeroPagina === paginaActual - 2 ||
-                          numeroPagina === paginaActual + 2
+                          numeroPagina === paginacion.page - 2 ||
+                          numeroPagina === paginacion.page + 2
                         ) {
                           return <span key={numeroPagina} className="px-1">...</span>;
                         }
@@ -523,9 +504,10 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                       return (
                         <Button
                           key={numeroPagina}
-                          variant={paginaActual === numeroPagina ? 'default' : 'outline'}
+                          variant={paginacion.page === numeroPagina ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => irAPagina(numeroPagina)}
+                          disabled={loading}
                           className="w-8 h-8 p-0"
                         >
                           {numeroPagina}
@@ -537,8 +519,8 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => irAPagina(paginaActual + 1)}
-                    disabled={paginaActual === totalPaginas}
+                    onClick={() => irAPagina(paginacion.page + 1)}
+                    disabled={paginacion.page === paginacion.totalPages || loading}
                   >
                     <span className="hidden sm:inline mr-1">Siguiente</span>
                     <ChevronRight className="h-4 w-4" />
@@ -546,7 +528,7 @@ export function ProductosTable({ productos, onDelete, onEdit }: ProductosTablePr
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </CardContent>
 

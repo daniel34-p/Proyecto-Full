@@ -4,7 +4,7 @@ import { desencriptarCosto } from '@/lib/encryption';
 import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
 import { verifyToken } from '@/lib/jwt';
 
-// GET - Listar productos filtrados por centro de costo
+// GET - Listar productos filtrados por centro de costo, con paginación, filtros y búsqueda
 export async function GET(request: Request) {
   try {
     // Extraer y verificar token
@@ -39,12 +39,26 @@ export async function GET(request: Request) {
       );
     }
 
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(searchParams.get('pageSize') || '50', 10) || 50));
+    const search = searchParams.get('search')?.trim();
+    const proveedor = searchParams.get('proveedor');
+    const unidades = searchParams.get('unidades');
+    const seccion = searchParams.get('seccion');
+    const creadoPorId = searchParams.get('creadoPorId');
+    const centroCostoId = searchParams.get('centroCostoId');
+    // Coincidencia exacta por referencia, usada por el flujo de "agregar cantidad"
+    const referencia = searchParams.get('referencia')?.trim();
+
     // Construir filtro según el rol
     let whereClause: any = {};
 
     if (usuario.rol === 'superadmin') {
-      // SuperAdmin ve TODOS los productos
-      whereClause = {};
+      // SuperAdmin ve TODOS los productos, opcionalmente filtrados por un centro específico
+      if (centroCostoId && centroCostoId !== 'todos') {
+        whereClause.centroCostoId = centroCostoId;
+      }
     } else if (usuario.rol === 'admin' || usuario.rol === 'asesor') {
       // Admin y Asesor solo ven productos de su centro de costo
       if (!usuario.centroCostoId) {
@@ -53,40 +67,70 @@ export async function GET(request: Request) {
           { status: 403 }
         );
       }
-      whereClause = { centroCostoId: usuario.centroCostoId };
+      whereClause.centroCostoId = usuario.centroCostoId;
     }
 
-    // Obtener productos con filtro
-    const productos = await prisma.producto.findMany({
-      where: whereClause,
-      orderBy: {
-        createdAt: 'desc'
-      },
-      include: {
-        centroCosto: {
-          select: {
-            id: true,
-            nombre: true,
-          }
+    if (proveedor && proveedor !== 'todos') whereClause.proveedor = proveedor;
+    if (unidades && unidades !== 'todos') whereClause.unidades = unidades;
+    if (seccion && seccion !== 'todos') whereClause.seccion = seccion;
+    if (creadoPorId && creadoPorId !== 'todos') whereClause.creadoPorId = creadoPorId;
+    if (referencia) whereClause.referencia = referencia.toUpperCase();
+
+    if (search) {
+      whereClause.OR = [
+        { producto: { contains: search, mode: 'insensitive' } },
+        { codigo: { contains: search, mode: 'insensitive' } },
+        { referencia: { contains: search, mode: 'insensitive' } },
+        { proveedor: { contains: search, mode: 'insensitive' } },
+        { embalaje: { contains: search, mode: 'insensitive' } },
+        { seccion: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Traer la página solicitada y el total en paralelo
+    const [productos, total] = await Promise.all([
+      prisma.producto.findMany({
+        where: whereClause,
+        orderBy: {
+          createdAt: 'desc'
         },
-        creadoPor: {
-          select: {
-            nombre: true,
-            email: true,
-            rol: true,
-          }
-        },
-        editadoPor: {
-          select: {
-            nombre: true,
-            email: true,
-            rol: true,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          centroCosto: {
+            select: {
+              id: true,
+              nombre: true,
+            }
+          },
+          creadoPor: {
+            select: {
+              nombre: true,
+              email: true,
+              rol: true,
+            }
+          },
+          editadoPor: {
+            select: {
+              nombre: true,
+              email: true,
+              rol: true,
+            }
           }
         }
-      }
-    });
+      }),
+      prisma.producto.count({ where: whereClause }),
+    ]);
     
-    return NextResponse.json(productos);
+    return NextResponse.json({
+      productos,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+    });
   } catch (error) {
     console.error('Error al obtener productos:', error);
     return NextResponse.json(
