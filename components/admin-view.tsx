@@ -86,6 +86,7 @@ export function AdminView() {
   const [estadisticas, setEstadisticas] = useState<{
     totalProductos: number;
     proveedores: { nombre: string; totalProductos: number; valorTotal: number }[];
+    departamentos: { nombre: string; totalProductos: number; valorTotal: number }[];
     granTotal: number;
   } | null>(null);
 
