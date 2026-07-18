@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X, Building2, Loader2 } from 'lucide-react';
+import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X, Building2, Loader2, Power, PowerOff } from 'lucide-react';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
@@ -47,6 +47,7 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   embalaje?: string;
+  activo: boolean;
   createdAt: string;
   centroCosto?: {
     id: string;
@@ -86,12 +87,14 @@ interface Filtros {
   seccion: string;
   creadoPorId: string;
   centroCostoId: string;
+  estado: string; // 'activos' | 'inactivos' | 'todos'
 }
 
 interface ProductosTableProps {
   productos: Producto[]; // Solo la página actual (ya viene filtrada/paginada del servidor)
   onDelete: (id: string) => void;
   onEdit: (producto: Producto) => void;
+  onToggleActivo: (id: string, activo: boolean) => void;
   loading: boolean;
   filtros: Filtros;
   onFiltrosChange: (filtros: Partial<Filtros>) => void;
@@ -105,6 +108,7 @@ export function ProductosTable({
   productos,
   onDelete,
   onEdit,
+  onToggleActivo,
   loading,
   filtros,
   onFiltrosChange,
@@ -152,7 +156,8 @@ export function ProductosTable({
     filtros.unidades !== 'todos' ||
     filtros.seccion !== 'todos' ||
     filtros.creadoPorId !== 'todos' ||
-    filtros.centroCostoId !== 'todos';
+    filtros.centroCostoId !== 'todos' ||
+    filtros.estado !== 'todos';
 
   const irAPagina = (pagina: number) => {
     onPageChange(pagina);
@@ -240,15 +245,29 @@ export function ProductosTable({
               <div className="md:col-span-1">
                 <Select value={filtros.seccion} onValueChange={(v) => onFiltrosChange({ seccion: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por sección" />
+                    <SelectValue placeholder="Filtrar por departamento" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todas las secciones</SelectItem>
+                    <SelectItem value="todos">Todos los departamentos</SelectItem>
                     {opciones.secciones.map((sec) => (
                       <SelectItem key={sec} value={sec}>
                         {sec}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro Estado */}
+              <div className="md:col-span-1">
+                <Select value={filtros.estado} onValueChange={(v) => onFiltrosChange({ estado: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filtrar por estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="activos">Solo activos</SelectItem>
+                    <SelectItem value="inactivos">Solo dados de baja</SelectItem>
+                    <SelectItem value="todos">Todos</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -334,7 +353,8 @@ export function ProductosTable({
                         <TableHead>Producto</TableHead>
                         <TableHead>Proveedor</TableHead>
                         <TableHead>Referencia</TableHead>
-                        <TableHead>Sección</TableHead>
+                        <TableHead>Departamento</TableHead>
+                        <TableHead>Estado</TableHead>
                         <TableHead>Cantidad</TableHead>
                         <TableHead>Embalaje</TableHead>
                         <TableHead>Costo</TableHead>
@@ -359,7 +379,10 @@ export function ProductosTable({
                     </TableHeader>
                     <TableBody>
                       {productos.map((producto) => (
-                        <TableRow key={producto.id}>
+                        <TableRow
+                          key={producto.id}
+                          className={!producto.activo ? 'bg-red-50 hover:bg-red-100/70' : undefined}
+                        >
                           <TableCell className="font-medium">{producto.codigo}</TableCell>
                           <TableCell>{producto.producto}</TableCell>
                           <TableCell className="capitalize">{producto.proveedor}</TableCell>
@@ -369,6 +392,17 @@ export function ProductosTable({
                               <Badge variant="outline">{producto.seccion}</Badge>
                             ) : (
                               <span className="text-gray-400">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {producto.activo ? (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+                                Activo
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-red-100 text-red-600 border-red-300">
+                                OFF
+                              </Badge>
                             )}
                           </TableCell>
                           <TableCell>
@@ -431,6 +465,21 @@ export function ProductosTable({
                                 >
                                   <Printer className="h-4 w-4 mr-2" />
                                   Imprimir Código
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onToggleActivo(producto.id, !producto.activo)}
+                                >
+                                  {producto.activo ? (
+                                    <>
+                                      <PowerOff className="h-4 w-4 mr-2" />
+                                      Dar de baja
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Power className="h-4 w-4 mr-2" />
+                                      Reactivar
+                                    </>
+                                  )}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem

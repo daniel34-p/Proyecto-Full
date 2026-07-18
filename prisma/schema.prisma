@@ -58,24 +58,30 @@ model Producto {
   codigoBarras   String       @unique
   embalaje       String?      // Campo opcional
   seccion        String?      // Sección del producto - opcional en BD (productos existentes no tienen valor), obligatoria en el formulario para productos nuevos
-  
+
+  // Estado del producto - false = dado de baja (agotado/dañado), no se elimina
+  // ni se pierde su historial, solo se excluye de los totales y del listado
+  // por defecto.
+  activo         Boolean      @default(true)
+
   // Centro de Costo - OPCIONAL al inicio para la migración
   centroCostoId  String?
   centroCosto    CentroCosto? @relation(fields: [centroCostoId], references: [id])
-  
+
   // Tracking de usuarios
   creadoPorId    String?
   creadoPor      Usuario?     @relation("ProductosCreadosPor", fields: [creadoPorId], references: [id])
   editadoPorId   String?
   editadoPor     Usuario?     @relation("ProductosEditadosPor", fields: [editadoPorId], references: [id])
-  
+
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  
+
   @@index([proveedor])
   @@index([producto])
   @@index([creadoPorId])
   @@index([referencia])
   @@index([centroCostoId])  // Importante para filtrado rápido
   @@index([seccion])
+  @@index([activo])
 }

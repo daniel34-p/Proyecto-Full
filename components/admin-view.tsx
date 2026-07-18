@@ -26,6 +26,7 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   embalaje?: string;
+  activo: boolean;
   createdAt: string;
   centroCosto?: {
     id: string;
@@ -52,6 +53,7 @@ interface QueryState {
   seccion: string;
   creadoPorId: string;
   centroCostoId: string;
+  estado: string;
 }
 
 const QUERY_INICIAL: QueryState = {
@@ -63,6 +65,7 @@ const QUERY_INICIAL: QueryState = {
   seccion: 'todos',
   creadoPorId: 'todos',
   centroCostoId: 'todos',
+  estado: 'todos',
 };
 
 export function AdminView() {
@@ -106,6 +109,7 @@ export function AdminView() {
     if (q.seccion !== 'todos') params.set('seccion', q.seccion);
     if (q.creadoPorId !== 'todos') params.set('creadoPorId', q.creadoPorId);
     if (q.centroCostoId !== 'todos') params.set('centroCostoId', q.centroCostoId);
+    if (q.estado !== 'todos') params.set('estado', q.estado);
     return params.toString();
   };
 
@@ -206,6 +210,36 @@ export function AdminView() {
     } catch (error) {
       console.error('Error al eliminar producto:', error);
       alert('Error al eliminar producto');
+    }
+  };
+
+  const handleToggleActivo = async (id: string, activo: boolean) => {
+    const mensaje = activo
+      ? '¿Reactivar este producto? Volverá a contarse en el inventario.'
+      : '¿Dar de baja este producto? No se eliminará, pero dejará de contarse en el inventario.';
+
+    if (!confirm(mensaje)) return;
+
+    try {
+      const response = await fetch(`/api/productos/${encodeURIComponent(id)}/estado`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ activo }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(errorData.error || 'Error al cambiar el estado del producto');
+        return;
+      }
+
+      await Promise.all([fetchProductos(queryState), fetchEstadisticas()]);
+    } catch (error) {
+      console.error('Error al cambiar estado del producto:', error);
+      alert('Error al cambiar el estado del producto');
     }
   };
 
@@ -338,6 +372,7 @@ export function AdminView() {
                 productos={productos}
                 onDelete={handleDelete}
                 onEdit={handleEdit}
+                onToggleActivo={handleToggleActivo}
                 loading={loadingProductos}
                 filtros={queryState}
                 onFiltrosChange={handleFiltrosChange}

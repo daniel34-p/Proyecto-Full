@@ -5,6 +5,8 @@ import { verifyToken } from '@/lib/jwt';
 // GET - Estadísticas de inventario (total de productos y valor por proveedor).
 // Se calculan trayendo solo los 3 campos numéricos necesarios (no el producto
 // completo con relaciones), para que sea liviano incluso con miles de filas.
+// Solo se cuentan productos activos, para que uno dado de baja (agotado o
+// dañado) no infle el valor total del inventario.
 export async function GET(request: Request) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -24,7 +26,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }
 
-    let whereClause: any = {};
+    let whereClause: any = { activo: true };
     if (usuario.rol !== 'superadmin') {
       if (!usuario.centroCostoId) {
         return NextResponse.json(
@@ -32,7 +34,7 @@ export async function GET(request: Request) {
           { status: 403 }
         );
       }
-      whereClause = { centroCostoId: usuario.centroCostoId };
+      whereClause.centroCostoId = usuario.centroCostoId;
     }
 
     const productos = await prisma.producto.findMany({

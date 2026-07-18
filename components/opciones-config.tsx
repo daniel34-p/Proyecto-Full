@@ -82,7 +82,7 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
     guardarOpciones(nuevasOpciones);
   };
 
-  const titulo = tipo === 'proveedores' ? 'Gestionar Proveedores' : tipo === 'unidades' ? 'Gestionar Unidades' : 'Gestionar Secciones';
+  const titulo = tipo === 'proveedores' ? 'Gestionar Proveedores' : tipo === 'unidades' ? 'Gestionar Unidades' : 'Gestionar Departamentos';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -97,7 +97,7 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
         <div className="space-y-4">
           {/* Agregar nueva opción */}
           <div className="space-y-2">
-            <Label htmlFor="nueva">Nueva {tipo === 'proveedores' ? 'Proveedor' : tipo === 'unidades' ? 'Unidad' : 'Sección'}</Label>
+            <Label htmlFor="nueva">Nueva {tipo === 'proveedores' ? 'Proveedor' : tipo === 'unidades' ? 'Unidad' : 'Departamento'}</Label>
             <div className="flex gap-2">
               <Input
                 id="nueva"

@@ -539,7 +539,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                     {errors.cantidad && (
                       <p className="text-sm text-red-500">{errors.cantidad.message}</p>
                     )}
-                    <p className="text-xs text-gray-500">Acepta números enteros y decimales</p>
+                    <p className="text-xs text-gray-500">Acepta números enteros y decimales, incluyendo 0</p>
                   </div>
 
                   {/* Unidades */}
@@ -581,7 +581,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
 
                   {/* Sección */}
                   <div className="space-y-2">
-                    <Label htmlFor="seccion">Sección *</Label>
+                    <Label htmlFor="seccion">Departamento *</Label>
                     <div className="flex gap-2">
                       <Select
                         value={selectedSeccion}
@@ -591,7 +591,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                         }}
                       >
                         <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Selecciona una sección" />
+                          <SelectValue placeholder="Selecciona un departamento" />
                         </SelectTrigger>
                         <SelectContent>
                           {secciones.map((sec) => (
@@ -606,7 +606,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                         variant="outline"
                         size="icon"
                         onClick={() => setConfigModal('secciones')}
-                        title="Gestionar secciones"
+                        title="Gestionar departamentos"
                       >
                         <Plus className="h-4 w-4" />
                       </Button>

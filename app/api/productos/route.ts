@@ -50,6 +50,10 @@ export async function GET(request: Request) {
     const centroCostoId = searchParams.get('centroCostoId');
     // Coincidencia exacta por referencia, usada por el flujo de "agregar cantidad"
     const referencia = searchParams.get('referencia')?.trim();
+    // Estado del producto: 'activos', 'inactivos' o 'todos' (default: 'todos',
+    // para que un producto dado de baja siga viéndose en la tabla marcado
+    // como OFF en vez de desaparecer; solo se excluye de las estadísticas)
+    const estado = searchParams.get('estado') || 'todos';
 
     // Construir filtro según el rol
     let whereClause: any = {};
@@ -75,6 +79,15 @@ export async function GET(request: Request) {
     if (seccion && seccion !== 'todos') whereClause.seccion = seccion;
     if (creadoPorId && creadoPorId !== 'todos') whereClause.creadoPorId = creadoPorId;
     if (referencia) whereClause.referencia = referencia.toUpperCase();
+
+    // Por defecto solo se listan productos activos, para que los dados de
+    // baja (agotados/dañados) no aparezcan en el catálogo normal ni se
+    // cuenten en los totales. 'todos' quita el filtro por completo.
+    if (estado === 'activos') {
+      whereClause.activo = true;
+    } else if (estado === 'inactivos') {
+      whereClause.activo = false;
+    }
 
     if (search) {
       whereClause.OR = [
@@ -215,6 +228,7 @@ export async function POST(request: Request) {
         embalaje: body.embalaje ? body.embalaje.toUpperCase() : null,
         creadoPorId: userId,
         centroCostoId: usuario.centroCostoId, // Asignar centro de costo del usuario
+        // activo se deja en su valor por defecto (true) definido en el schema
       },
       include: {
         centroCosto: {
