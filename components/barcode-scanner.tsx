@@ -25,6 +25,7 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   embalaje?: string;
+  activo: boolean;
   createdAt: string;
   creadoPor?: {
     nombre: string;
