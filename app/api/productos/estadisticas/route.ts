@@ -8,6 +8,10 @@ import { verifyToken } from '@/lib/jwt';
 // para que sea liviano incluso con miles de filas.
 // Solo se cuentan productos activos, para que uno dado de baja (agotado o
 // dañado) no infle el valor total del inventario.
+//
+// Un SuperAdmin puede pasar ?centroCostoId=<id> para ver las estadísticas
+// de una sola sucursal (usado por la vista de "Sucursales"); sin ese
+// parámetro, ve el total combinado de todos los centros de costo.
 export async function GET(request: Request) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -27,6 +31,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const centroCostoIdParam = searchParams.get('centroCostoId');
+
     let whereClause: any = { activo: true };
     if (usuario.rol !== 'superadmin') {
       if (!usuario.centroCostoId) {
@@ -36,6 +43,9 @@ export async function GET(request: Request) {
         );
       }
       whereClause.centroCostoId = usuario.centroCostoId;
+    } else if (centroCostoIdParam && centroCostoIdParam !== 'todos') {
+      // SuperAdmin consultando una sucursal específica
+      whereClause.centroCostoId = centroCostoIdParam;
     }
 
     const productos = await prisma.producto.findMany({

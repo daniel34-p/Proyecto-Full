@@ -5,6 +5,10 @@ import { verifyToken } from '@/lib/jwt';
 // GET - Devuelve los valores únicos disponibles para los filtros de la tabla
 // de productos (proveedores, unidades, secciones, usuarios que han creado
 // productos), respetando el centro de costo del usuario que consulta.
+//
+// Un SuperAdmin puede pasar ?centroCostoId=<id> para obtener las opciones
+// de una sola sucursal (usado por la vista de "Sucursales"); sin ese
+// parámetro, ve las opciones combinadas de todos los centros de costo.
 export async function GET(request: Request) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -24,6 +28,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const centroCostoIdParam = searchParams.get('centroCostoId');
+
     let whereClause: any = {};
     if (usuario.rol !== 'superadmin') {
       if (!usuario.centroCostoId) {
@@ -33,6 +40,8 @@ export async function GET(request: Request) {
         );
       }
       whereClause = { centroCostoId: usuario.centroCostoId };
+    } else if (centroCostoIdParam && centroCostoIdParam !== 'todos') {
+      whereClause = { centroCostoId: centroCostoIdParam };
     }
 
     const [proveedoresRaw, unidadesRaw, seccionesRaw, creadoresRaw] = await Promise.all([
