@@ -47,7 +47,7 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   embalaje?: string;
-  activo: boolean;
+  anioInventario: number;
   createdAt: string;
   centroCosto?: {
     id: string;
@@ -94,7 +94,7 @@ interface ProductosTableProps {
   productos: Producto[]; // Solo la página actual (ya viene filtrada/paginada del servidor)
   onDelete: (id: string) => void;
   onEdit: (producto: Producto) => void;
-  onToggleActivo: (id: string, activo: boolean) => void;
+  onMarcarActualizado: (id: string, actualizar: boolean) => void;
   loading: boolean;
   filtros: Filtros;
   onFiltrosChange: (filtros: Partial<Filtros>) => void;
@@ -108,7 +108,7 @@ export function ProductosTable({
   productos,
   onDelete,
   onEdit,
-  onToggleActivo,
+  onMarcarActualizado,
   loading,
   filtros,
   onFiltrosChange,
@@ -118,6 +118,7 @@ export function ProductosTable({
   onPageChange,
 }: ProductosTableProps) {
   const { isAdmin, isSuperAdmin } = useAuth();
+  const anioActual = new Date().getFullYear();
   const [barcodeModal, setBarcodeModal] = useState<{
     isOpen: boolean;
     codigo: string;
@@ -265,8 +266,8 @@ export function ProductosTable({
                     <SelectValue placeholder="Filtrar por estado" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="activos">Solo activos</SelectItem>
-                    <SelectItem value="inactivos">Solo dados de baja</SelectItem>
+                    <SelectItem value="activos">Actualizados en {anioActual}</SelectItem>
+                    <SelectItem value="inactivos">Pendientes (años anteriores)</SelectItem>
                     <SelectItem value="todos">Todos</SelectItem>
                   </SelectContent>
                 </Select>
@@ -381,7 +382,7 @@ export function ProductosTable({
                       {productos.map((producto) => (
                         <TableRow
                           key={producto.id}
-                          className={!producto.activo ? 'bg-red-50 hover:bg-red-100/70' : undefined}
+                          className={producto.anioInventario !== anioActual ? 'bg-red-50 hover:bg-red-100/70' : undefined}
                         >
                           <TableCell className="font-medium">{producto.codigo}</TableCell>
                           <TableCell>{producto.producto}</TableCell>
@@ -395,13 +396,13 @@ export function ProductosTable({
                             )}
                           </TableCell>
                           <TableCell>
-                            {producto.activo ? (
+                            {producto.anioInventario === anioActual ? (
                               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-                                Activo
+                                {producto.anioInventario}
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="bg-red-100 text-red-600 border-red-300">
-                                OFF
+                                {producto.anioInventario}
                               </Badge>
                             )}
                           </TableCell>
@@ -467,17 +468,17 @@ export function ProductosTable({
                                   Imprimir Código
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  onClick={() => onToggleActivo(producto.id, !producto.activo)}
+                                  onClick={() => onMarcarActualizado(producto.id, producto.anioInventario !== anioActual)}
                                 >
-                                  {producto.activo ? (
+                                  {producto.anioInventario === anioActual ? (
                                     <>
                                       <PowerOff className="h-4 w-4 mr-2" />
-                                      Dar de baja
+                                      Marcar como pendiente
                                     </>
                                   ) : (
                                     <>
                                       <Power className="h-4 w-4 mr-2" />
-                                      Reactivar
+                                      Marcar como {anioActual}
                                     </>
                                   )}
                                 </DropdownMenuItem>

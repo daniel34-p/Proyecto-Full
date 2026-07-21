@@ -59,10 +59,21 @@ model Producto {
   embalaje       String?      // Campo opcional
   seccion        String?      // Sección del producto - opcional en BD (productos existentes no tienen valor), obligatoria en el formulario para productos nuevos
 
-  // Estado del producto - false = dado de baja (agotado/dañado), no se elimina
-  // ni se pierde su historial, solo se excluye de los totales y del listado
-  // por defecto.
+  // Estado "histórico" del producto (dado de baja manual). Se conserva en la
+  // base de datos mas ya no se usa como criterio principal para los totales
+  // de inventario - ver "anioInventario" abajo.
   activo         Boolean      @default(true)
+
+  // Año del último inventario en el que se confirmó este producto. Todos los
+  // productos existentes arrancan en 2025 (no se pierde ni se borra nada).
+  // Se actualiza automáticamente al año actual cuando alguien edita la
+  // cantidad de un producto (ver app/api/productos/[id]/route.ts), y se
+  // puede forzar manualmente vía app/api/productos/[id]/estado/route.ts.
+  // Solo los productos con anioInventario === año actual se cuentan en los
+  // totales de inventario (proveedor/departamento) - así los productos que
+  // no se vuelven a contar en el nuevo inventario físico (por dañados,
+  // agotados, etc.) dejan de sumar sin necesidad de eliminarlos.
+  anioInventario Int          @default(2025)
 
   // Centro de Costo - OPCIONAL al inicio para la migración
   centroCostoId  String?
@@ -84,4 +95,6 @@ model Producto {
   @@index([centroCostoId])  // Importante para filtrado rápido
   @@index([seccion])
   @@index([activo])
+  @@index([anioInventario])
+  @@index([centroCostoId, anioInventario]) // La combinación que más se consulta
 }

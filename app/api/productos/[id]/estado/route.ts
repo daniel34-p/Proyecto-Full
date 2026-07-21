@@ -2,9 +2,17 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
 
-// PATCH - Dar de baja o reactivar un producto (no lo elimina, solo cambia
-// su estado). Un producto inactivo no aparece en el listado por defecto ni
-// se suma en las estadísticas de inventario.
+// PATCH - Forzar manualmente si un producto cuenta como "actualizado" en el
+// inventario del año en curso, o como "pendiente" (de un año anterior).
+// Esto NO elimina el producto - solo cambia si se suma en los totales de
+// proveedor/departamento. Pensado para casos donde la cantidad real no
+// cambió pero igual quieres confirmar el producto, o para excluirlo
+// manualmente del conteo (p.ej. se dañó, aunque técnicamente su cantidad
+// en el sistema siga igual).
+//
+// Body esperado: { actualizar: boolean }
+//   actualizar: true  -> anioInventario = año actual
+//   actualizar: false -> anioInventario = año actual - 1 (queda pendiente)
 //
 // Guardar este archivo como: app/api/productos/[id]/estado/route.ts
 export async function PATCH(
@@ -28,9 +36,9 @@ export async function PATCH(
 
     const body = await request.json();
 
-    if (typeof body.activo !== 'boolean') {
+    if (typeof body.actualizar !== 'boolean') {
       return NextResponse.json(
-        { error: 'El campo "activo" es requerido y debe ser true o false' },
+        { error: 'El campo "actualizar" es requerido y debe ser true o false' },
         { status: 400 }
       );
     }
@@ -59,10 +67,13 @@ export async function PATCH(
       }
     }
 
+    const anioActual = new Date().getFullYear();
+    const nuevoAnio = body.actualizar ? anioActual : anioActual - 1;
+
     const producto = await prisma.producto.update({
       where: { id },
       data: {
-        activo: body.activo,
+        anioInventario: nuevoAnio,
         editadoPorId: payload.userId,
       },
       include: {
@@ -80,14 +91,14 @@ export async function PATCH(
 
     return NextResponse.json(producto);
   } catch (error: any) {
-    console.error('Error al cambiar estado del producto:', error);
+    console.error('Error al cambiar el año de inventario del producto:', error);
 
     if (error.code === 'P2025') {
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
     }
 
     return NextResponse.json(
-      { error: 'Error al cambiar estado del producto' },
+      { error: 'Error al cambiar el estado del producto' },
       { status: 500 }
     );
   }

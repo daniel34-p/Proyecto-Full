@@ -157,6 +157,14 @@ export async function PUT(
     
     // Convertir cantidad a float
     const cantidad = parseFloat(body.cantidad);
+
+    // Si la cantidad cambió respecto a lo que ya había, este producto se
+    // considera "confirmado/actualizado" en el inventario del año en curso,
+    // y por lo tanto vuelve a contar en los totales de proveedor/departamento.
+    // Si el usuario simplemente reabre y guarda el mismo valor, no se toca
+    // (para eso está la acción manual "Marcar como actualizado").
+    const anioActual = new Date().getFullYear();
+    const cantidadCambio = !isNaN(cantidad) && cantidad !== productoActual.cantidad;
     
     const producto = await prisma.producto.update({
       where: { id },
@@ -176,6 +184,7 @@ export async function PUT(
         codigo: body.codigo,
         embalaje: body.embalaje ? body.embalaje.toUpperCase() : null,
         editadoPorId: userId,
+        ...(cantidadCambio ? { anioInventario: anioActual } : {}),
         // NO cambiar centroCostoId al editar
       },
       include: {

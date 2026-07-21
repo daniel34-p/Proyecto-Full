@@ -6,8 +6,11 @@ import { verifyToken } from '@/lib/jwt';
 // proveedor y también por departamento/sección). Se calculan trayendo solo
 // los campos numéricos necesarios (no el producto completo con relaciones),
 // para que sea liviano incluso con miles de filas.
-// Solo se cuentan productos activos, para que uno dado de baja (agotado o
-// dañado) no infle el valor total del inventario.
+//
+// Solo se cuentan productos con anioInventario === año actual, es decir,
+// los que ya fueron confirmados/actualizados en el inventario de este año.
+// Los que quedaron en años anteriores (no se volvieron a contar - agotados,
+// dañados, etc.) no se eliminan, pero tampoco suman en el total.
 //
 // Un SuperAdmin puede pasar ?centroCostoId=<id> para ver las estadísticas
 // de una sola sucursal (usado por la vista de "Sucursales"); sin ese
@@ -33,8 +36,9 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const centroCostoIdParam = searchParams.get('centroCostoId');
+    const anioActual = new Date().getFullYear();
 
-    let whereClause: any = { activo: true };
+    let whereClause: any = { anioInventario: anioActual };
     if (usuario.rol !== 'superadmin') {
       if (!usuario.centroCostoId) {
         return NextResponse.json(

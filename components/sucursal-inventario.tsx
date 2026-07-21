@@ -27,7 +27,7 @@ interface Producto {
   codigo: string;
   codigoBarras: string;
   embalaje?: string;
-  activo: boolean;
+  anioInventario: number;
   createdAt: string;
   centroCosto?: {
     id: string;
@@ -212,17 +212,18 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
     }
   };
 
-  const handleToggleActivo = async (id: string, activo: boolean) => {
-    const mensaje = activo
-      ? '¿Reactivar este producto? Volverá a contarse en el inventario.'
-      : '¿Dar de baja este producto? No se eliminará, pero dejará de contarse en el inventario.';
+  const handleMarcarActualizado = async (id: string, actualizar: boolean) => {
+    const anioActual = new Date().getFullYear();
+    const mensaje = actualizar
+      ? `¿Marcar este producto como actualizado en ${anioActual}? Volverá a contarse en el inventario.`
+      : '¿Marcar este producto como pendiente? No se eliminará, pero dejará de contarse en el inventario hasta que se vuelva a actualizar.';
     if (!confirm(mensaje)) return;
 
     try {
       const response = await fetch(`/api/productos/${encodeURIComponent(id)}/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ activo }),
+        body: JSON.stringify({ actualizar }),
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -269,7 +270,7 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
         productos={productos}
         onDelete={handleDelete}
         onEdit={handleEdit}
-        onToggleActivo={handleToggleActivo}
+        onMarcarActualizado={handleMarcarActualizado}
         loading={loadingProductos}
         filtros={queryState}
         onFiltrosChange={handleFiltrosChange}
