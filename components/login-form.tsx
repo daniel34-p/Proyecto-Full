@@ -12,11 +12,12 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, sessionMessage, clearSessionMessage } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    clearSessionMessage();
     setIsLoading(true);
 
     const result = await login(email, password);
@@ -40,6 +41,11 @@ export function LoginForm() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {sessionMessage && (
+            <div className="mb-4 p-3 text-sm text-amber-800 bg-amber-50 rounded-md border border-amber-200">
+              {sessionMessage}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Correo Electrónico</Label>

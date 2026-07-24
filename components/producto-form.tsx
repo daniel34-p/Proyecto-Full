@@ -18,6 +18,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, X, PackagePlus, ChevronRight, Printer } from 'lucide-react';
 import { OpcionesConfig } from '@/components/opciones-config';
 import { BarcodeDisplay } from '@/components/barcode-display';
+import { useAuth } from '@/lib/auth-context';
 
 interface Producto {
   id: string;
@@ -60,6 +61,10 @@ interface ProductoFormProps {
 export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarBusqueda = false }: ProductoFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Cuando una acción falla por sesión vencida (401), se muestra un aviso
+  // claro y accionable en vez del mensaje crudo "Token inválido".
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const { logout } = useAuth();
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | 'secciones' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
@@ -202,6 +207,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
 
     setIsSubmitting(true);
     setError('');
+    setSessionExpired(false);
 
     try {
       const nuevaCantidad = parseFloat(productoSeleccionado.cantidad.toString()) + parseFloat(cantidadAgregar);
@@ -226,6 +232,15 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
           userId: JSON.parse(localStorage.getItem('user') || '{}').id,
         }),
       });
+
+      if (response.status === 401) {
+        // La sesión venció justo al momento de guardar. En vez del mensaje
+        // crudo del servidor, mostramos un aviso claro con la opción de
+        // volver a iniciar sesión - sin perder de golpe lo que el usuario
+        // ya tenía en pantalla.
+        setSessionExpired(true);
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -262,6 +277,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const onSubmit = async (data: ProductoFormData, imprimir: boolean = false) => {
     setIsSubmitting(true);
     setError('');
+    setSessionExpired(false);
 
     try {
       const url = isEditing 
@@ -282,6 +298,15 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
           userId: JSON.parse(localStorage.getItem('user') || '{}').id,
         }),
       });
+
+      if (response.status === 401) {
+        // La sesión venció justo al momento de guardar. En vez del mensaje
+        // crudo del servidor, mostramos un aviso claro con la opción de
+        // volver a iniciar sesión - sin perder de golpe lo que el usuario
+        // ya tenía en el formulario.
+        setSessionExpired(true);
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -414,6 +439,20 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                 </div>
               )}
 
+              {/* Sesión vencida al guardar */}
+              {sessionExpired && (
+                <div className="p-3 text-sm text-amber-800 bg-amber-50 rounded-md border border-amber-200 space-y-2">
+                  <p>No se pudo guardar porque tu sesión expiró. Antes de continuar, puedes anotar estos datos - al iniciar sesión de nuevo vas a tener que volver a ingresarlos.</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => logout('Tu sesión expiró. Por favor inicia sesión de nuevo.')}
+                  >
+                    Iniciar sesión de nuevo
+                  </Button>
+                </div>
+              )}
+
               {/* Botones */}
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button 
@@ -480,7 +519,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                   O registra un producto nuevo:
                 </p>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <form onSubmit={handleSubmit((data) => onSubmit(data))} className="space-y-4">
                   {/* Proveedor */}
                   <div className="space-y-2">
                     <Label htmlFor="proveedor">Proveedor *</Label>
@@ -698,6 +737,20 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                   {error && (mostrarBusqueda ? modoAgregar : true) && (
                     <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
                       {error}
+                    </div>
+                  )}
+
+                  {/* Sesión vencida al guardar */}
+                  {sessionExpired && (
+                    <div className="p-3 text-sm text-amber-800 bg-amber-50 rounded-md border border-amber-200 space-y-2">
+                      <p>No se pudo guardar porque tu sesión expiró. Antes de continuar, puedes anotar estos datos - al iniciar sesión de nuevo vas a tener que volver a ingresarlos.</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => logout('Tu sesión expiró. Por favor inicia sesión de nuevo.')}
+                      >
+                        Iniciar sesión de nuevo
+                      </Button>
                     </div>
                   )}
 

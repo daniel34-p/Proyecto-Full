@@ -26,20 +26,58 @@ interface AuthContextType {
   isAsesor: boolean;
   isAuthenticated: boolean;
   centroCosto: CentroCosto | null;
+  // Mensaje para mostrar en la pantalla de login (p.ej. "tu sesión expiró").
+  // Se limpia automáticamente al iniciar sesión de nuevo.
+  sessionMessage: string | null;
+  clearSessionMessage: () => void;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  // logout acepta un mensaje opcional para explicarle al usuario por qué se
+  // cerró la sesión (por ejemplo, cuando expiró en vez de un cierre manual).
+  logout: (message?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Lee la fecha de expiración (exp) de un JWT sin verificar su firma - solo
+// para decidir en el cliente si vale la pena intentar usarlo o mostrar el
+// login de una vez. La verificación real (con firma) siempre la hace el
+// servidor en cada request; esto es únicamente para mejorar la experiencia,
+// nunca se usa como control de seguridad.
+function tokenEstaVencido(token: string): boolean {
+  try {
+    const payloadBase64 = token.split('.')[1];
+    if (!payloadBase64) return true;
+    const payloadJson = atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(payloadJson);
+    if (!payload.exp) return false; // sin campo exp, dejamos que el servidor decida
+    return Date.now() >= payload.exp * 1000;
+  } catch {
+    // Si el token no se puede leer, lo tratamos como vencido/ inválido
+    return true;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
+    const savedToken = localStorage.getItem('token');
+
+    if (savedUser && savedToken) {
+      if (tokenEstaVencido(savedToken)) {
+        // La sesión ya venció - la limpiamos de una vez y mostramos el
+        // login con un mensaje claro, en vez de dejar que el usuario
+        // navegue por la app con una sesión muerta que va a fallar en
+        // cualquier momento (típicamente justo cuando intenta guardar algo).
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        setSessionMessage('Tu sesión expiró. Por favor inicia sesión de nuevo.');
+      } else {
+        setUser(JSON.parse(savedUser));
+      }
     }
     setIsLoading(false);
   }, []);
@@ -64,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
       localStorage.setItem('token', token);
+      setSessionMessage(null);
       
       return { success: true };
     } catch (error) {
@@ -71,11 +110,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = (message?: string) => {
     setUser(null);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    setSessionMessage(message || null);
   };
+
+  const clearSessionMessage = () => setSessionMessage(null);
 
   if (isLoading) {
     return null;
@@ -91,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAsesor: user?.rol === 'asesor',
         isAuthenticated: !!user,
         centroCosto: user?.centroCosto || null,
+        sessionMessage,
+        clearSessionMessage,
         login,
         logout,
       }}
