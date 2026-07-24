@@ -15,8 +15,9 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useState, useEffect } from 'react';
-import { Plus, Search, X, PackagePlus, ChevronRight } from 'lucide-react';
+import { Plus, Search, X, PackagePlus, ChevronRight, Printer } from 'lucide-react';
 import { OpcionesConfig } from '@/components/opciones-config';
+import { BarcodeDisplay } from '@/components/barcode-display';
 
 interface Producto {
   id: string;
@@ -69,6 +70,15 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const [selectedUnidades, setSelectedUnidades] = useState('');
   const [selectedSeccion, setSelectedSeccion] = useState('');
   const isEditing = !!productoToEdit;
+
+  // Modal de código de barras para el botón "Guardar e Imprimir"
+  const [barcodeModal, setBarcodeModal] = useState<{
+    isOpen: boolean;
+    codigo: string;
+    producto: string;
+    embalaje?: string;
+    referencia?: string;
+  }>({ isOpen: false, codigo: '', producto: '' });
 
   // Estados para búsqueda por referencia
   const [searchRef, setSearchRef] = useState('');
@@ -249,7 +259,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
     setError('');
   };
 
-  const onSubmit = async (data: ProductoFormData) => {
+  const onSubmit = async (data: ProductoFormData, imprimir: boolean = false) => {
     setIsSubmitting(true);
     setError('');
 
@@ -286,6 +296,19 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       setSelectedProveedor('');
       setSelectedUnidades('');
       setSelectedSeccion('');
+
+      // "Guardar e Imprimir": mismo diálogo de código de barras que se usa
+      // en la tabla de productos ("Imprimir Código"), con los datos del
+      // producto recién guardado.
+      if (imprimir && productoGuardado?.codigoBarras) {
+        setBarcodeModal({
+          isOpen: true,
+          codigo: productoGuardado.codigoBarras,
+          producto: productoGuardado.producto,
+          embalaje: productoGuardado.embalaje || undefined,
+          referencia: productoGuardado.referencia || undefined,
+        });
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -687,6 +710,18 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                           ? 'Actualizar Producto' 
                           : 'Guardar Producto'}
                     </Button>
+                    {!isEditing && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={isSubmitting}
+                        onClick={handleSubmit((data) => onSubmit(data, true))}
+                        className="flex-1 w-full"
+                      >
+                        <Printer className="h-4 w-4 mr-2" />
+                        {isSubmitting ? 'Guardando...' : 'Guardar e Imprimir'}
+                      </Button>
+                    )}
                     {isEditing && (
                       <Button 
                         type="button" 
@@ -714,6 +749,16 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
           tipo={configModal}
         />
       )}
+
+      {/* Modal de código de barras (botón "Guardar e Imprimir") */}
+      <BarcodeDisplay
+        isOpen={barcodeModal.isOpen}
+        onClose={() => setBarcodeModal((prev) => ({ ...prev, isOpen: false }))}
+        codigo={barcodeModal.codigo}
+        producto={barcodeModal.producto}
+        embalaje={barcodeModal.embalaje}
+        referencia={barcodeModal.referencia}
+      />
     </>
   );
 }

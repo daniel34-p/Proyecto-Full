@@ -46,29 +46,70 @@ interface BarcodeScannerProps {
 }
 
 export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScannerProps) {
-  const [scanner, setScanner] = useState<Html5Qrcode | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState('');
   const [cameraReady, setCameraReady] = useState(false);
-  const [scanAttempts, setScanAttempts] = useState(0);
+  // Solo para el mensaje de depuración en pantalla; se actualiza cada ~25
+  // intentos, no en cada frame (ver onScanFailure más abajo).
+  const [scanAttemptsDisplay, setScanAttemptsDisplay] = useState(0);
 
   const readerRef = useRef<HTMLDivElement | null>(null);
   const isInitializing = useRef(false);
 
-  useEffect(() => {
-    if (isOpen && !scanner && !isScanning && !isInitializing.current) {
-      const timer = setTimeout(() => {
-        initCamera();
-      }, 400);
-      return () => clearTimeout(timer);
-    }
+  // La instancia de la cámara y si está escaneando viven en refs, no en
+  // estado: no se usan para renderizar nada, y así evitamos re-renders
+  // extra y closures obsoletos en las funciones de limpieza.
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const isScanningRef = useRef(false);
 
-    return () => {
-      if (!isOpen) {
-        stopCamera();
+  // Cuenta cada frame fallido sin tocar React (html5-qrcode llama a
+  // onScanFailure hasta ~20 veces por segundo mientras no hay código en
+  // cuadro, que es el caso normal casi todo el tiempo).
+  const scanAttemptsRef = useRef(0);
+
+  // Evita procesar el mismo código dos veces si llegan frames de más
+  // mientras stopCamera() todavía está deteniendo el stream (es async).
+  const procesandoRef = useRef(false);
+
+  // Timeout pendiente de "reintentar en 2s" tras un error, para poder
+  // cancelarlo si el usuario cierra el modal antes de que se dispare.
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPendingRetry = () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      // Cada vez que se abre el escáner, se puede procesar un código nuevo.
+      procesandoRef.current = false;
+      if (!scannerRef.current && !isInitializing.current) {
+        const timer = setTimeout(() => {
+          initCamera();
+        }, 400);
+        return () => clearTimeout(timer);
       }
-    };
+    } else {
+      stopCamera();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  // Limpieza garantizada si el componente se desmonta mientras la cámara
+  // sigue activa (por ejemplo, si el padre lo remueve del árbol sin que
+  // isOpen pase por false primero). Sin este efecto separado, la cámara
+  // puede quedar "reservada" por el navegador y el siguiente intento de
+  // abrir el escáner falla con "La cámara está siendo usada por otra
+  // aplicación".
+  useEffect(() => {
+    return () => {
+      clearPendingRetry();
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const initCamera = async () => {
     if (isInitializing.current) return;
@@ -150,8 +191,8 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
         onScanFailure
       );
 
-      setScanner(html5Qrcode);
-      setIsScanning(true);
+      scannerRef.current = html5Qrcode;
+      isScanningRef.current = true;
       setCameraReady(true);
       isInitializing.current = false;
 
@@ -176,22 +217,28 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
   };
 
   const stopCamera = async () => {
-    if (scanner && isScanning) {
+    clearPendingRetry();
+    if (scannerRef.current && isScanningRef.current) {
       try {
-        await scanner.stop();
-        scanner.clear();
+        await scannerRef.current.stop();
+        scannerRef.current.clear();
         console.log('🛑 Cámara detenida');
       } catch (err) {
         console.error('Error deteniendo cámara:', err);
       }
     }
-    setScanner(null);
-    setIsScanning(false);
+    scannerRef.current = null;
+    isScanningRef.current = false;
     setCameraReady(false);
     isInitializing.current = false;
   };
 
   const onScanSuccess = async (decodedText: string, decodedResult: any) => {
+    // Evita procesar el mismo código dos veces si llegan frames de más
+    // mientras stopCamera() todavía está deteniendo el stream.
+    if (procesandoRef.current) return;
+    procesandoRef.current = true;
+
     console.log('✅ Código escaneado:', decodedText);
     console.log('📊 Formato:', decodedResult?.result?.format);
     
@@ -202,13 +249,16 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
     await buscarProducto(decodedText);
   };
 
-  const onScanFailure = (error: string) => {
-    // Incrementar intentos silenciosamente
-    setScanAttempts(prev => prev + 1);
-    
-    // Solo mostrar mensaje cada 100 intentos fallidos
-    if (scanAttempts > 0 && scanAttempts % 100 === 0) {
-      console.log(`⏳ Buscando código... (${scanAttempts} intentos)`);
+  const onScanFailure = (_error: string) => {
+    // Este callback se dispara hasta ~20 veces por segundo (una por cada
+    // frame sin código detectado, que es el caso normal casi todo el
+    // tiempo). Contamos en una ref para no disparar un re-render de React
+    // en cada frame, y solo sincronizamos al estado visible cada 25
+    // intentos - lo suficiente para el mensaje de depuración, sin
+    // sobrecargar la interfaz.
+    scanAttemptsRef.current += 1;
+    if (scanAttemptsRef.current % 25 === 0) {
+      setScanAttemptsDisplay(scanAttemptsRef.current);
     }
   };
 
@@ -222,10 +272,15 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.error || 'Producto no encontrado con ese código');
         
-        // Reintentar escaneo después de 2 segundos
-        setTimeout(async () => {
+        // Reintentar escaneo después de 2 segundos (cancelable si el
+        // usuario cierra el modal antes de que se dispare)
+        clearPendingRetry();
+        retryTimeoutRef.current = setTimeout(async () => {
+          retryTimeoutRef.current = null;
           setError('');
-          setScanAttempts(0);
+          scanAttemptsRef.current = 0;
+          setScanAttemptsDisplay(0);
+          procesandoRef.current = false;
           await initCamera();
         }, 2000);
         return;
@@ -234,33 +289,47 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
       const producto = await response.json();
       console.log('✅ Producto encontrado:', producto.producto);
       
-      setScanAttempts(0);
+      scanAttemptsRef.current = 0;
+      setScanAttemptsDisplay(0);
       onProductFound(producto);
       onClose();
     } catch (err) {
       console.error('Error buscando producto:', err);
       setError('Error de conexión. Verifica tu internet.');
       
-      setTimeout(async () => {
+      clearPendingRetry();
+      retryTimeoutRef.current = setTimeout(async () => {
+        retryTimeoutRef.current = null;
         setError('');
-        setScanAttempts(0);
+        scanAttemptsRef.current = 0;
+        setScanAttemptsDisplay(0);
+        procesandoRef.current = false;
         await initCamera();
       }, 2000);
     }
   };
 
   const handleClose = async () => {
+    clearPendingRetry();
     await stopCamera();
     setError('');
-    setScanAttempts(0);
+    scanAttemptsRef.current = 0;
+    setScanAttemptsDisplay(0);
+    procesandoRef.current = false;
     onClose();
   };
 
   const handleRetry = async () => {
+    clearPendingRetry();
     setError('');
-    setScanAttempts(0);
+    scanAttemptsRef.current = 0;
+    setScanAttemptsDisplay(0);
+    procesandoRef.current = false;
     await stopCamera();
-    setTimeout(() => initCamera(), 500);
+    retryTimeoutRef.current = setTimeout(() => {
+      retryTimeoutRef.current = null;
+      initCamera();
+    }, 500);
   };
 
   return (
@@ -356,9 +425,9 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
           </div>
 
           {/* Debug info (solo visible si hay muchos intentos) */}
-          {scanAttempts > 50 && cameraReady && (
+          {scanAttemptsDisplay > 50 && cameraReady && (
             <div className="text-xs text-center text-gray-500">
-              Buscando código... ({scanAttempts} intentos)
+              Buscando código... ({scanAttemptsDisplay} intentos)
             </div>
           )}
         </div>

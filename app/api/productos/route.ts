@@ -100,7 +100,30 @@ export async function GET(request: Request) {
     }
 
     // Traer la página solicitada y el total en paralelo
-    const [productos, total] = await Promise.all([
+    const includeRelaciones = {
+      centroCosto: {
+        select: {
+          id: true,
+          nombre: true,
+        }
+      },
+      creadoPor: {
+        select: {
+          nombre: true,
+          email: true,
+          rol: true,
+        }
+      },
+      editadoPor: {
+        select: {
+          nombre: true,
+          email: true,
+          rol: true,
+        }
+      }
+    };
+
+    let [productos, total] = await Promise.all([
       prisma.producto.findMany({
         where: whereClause,
         orderBy: {
@@ -108,31 +131,35 @@ export async function GET(request: Request) {
         },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: {
-          centroCosto: {
-            select: {
-              id: true,
-              nombre: true,
-            }
-          },
-          creadoPor: {
-            select: {
-              nombre: true,
-              email: true,
-              rol: true,
-            }
-          },
-          editadoPor: {
-            select: {
-              nombre: true,
-              email: true,
-              rol: true,
-            }
-          }
-        }
+        include: includeRelaciones,
       }),
       prisma.producto.count({ where: whereClause }),
     ]);
+
+    // Si se buscó por referencia exacta (flujo de "agregar cantidad") y no
+    // hubo resultados, se intenta de nuevo con coincidencia parcial antes
+    // de reportar "no encontrado". Esto evita falsos negativos cuando una
+    // referencia quedó guardada con espacios de más (p.ej. pegada desde
+    // Excel o por autocorrección del teclado) - el producto sigue siendo
+    // el mismo, solo que la comparación exacta no coincide letra por letra.
+    if (referencia && total === 0) {
+      const whereFallback = { ...whereClause };
+      whereFallback.referencia = { contains: referencia.toUpperCase(), mode: 'insensitive' };
+
+      const [productosFallback, totalFallback] = await Promise.all([
+        prisma.producto.findMany({
+          where: whereFallback,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          include: includeRelaciones,
+        }),
+        prisma.producto.count({ where: whereFallback }),
+      ]);
+
+      productos = productosFallback;
+      total = totalFallback;
+    }
     
     return NextResponse.json({
       productos,
@@ -213,18 +240,18 @@ export async function POST(request: Request) {
     
     const producto = await prisma.producto.create({
       data: {
-        proveedor: body.proveedor.toUpperCase(),
-        referencia: body.referencia.toUpperCase(),
-        producto: body.producto.toUpperCase(),
+        proveedor: body.proveedor.trim().toUpperCase(),
+        referencia: body.referencia.trim().toUpperCase(),
+        producto: body.producto.trim().toUpperCase(),
         cantidad: cantidad,
-        unidades: body.unidades.toUpperCase(),
-        seccion: body.seccion ? body.seccion.toUpperCase() : null,
-        costo: body.costo.toUpperCase(),
+        unidades: body.unidades.trim().toUpperCase(),
+        seccion: body.seccion ? body.seccion.trim().toUpperCase() : null,
+        costo: body.costo.trim().toUpperCase(),
         costoReal: costoReal,
         precioVenta: body.precioVenta,
         codigo: body.codigo,
         codigoBarras: codigoBarras,
-        embalaje: body.embalaje ? body.embalaje.toUpperCase() : null,
+        embalaje: body.embalaje ? body.embalaje.trim().toUpperCase() : null,
         creadoPorId: userId,
         centroCostoId: usuario.centroCostoId, // Asignar centro de costo del usuario
         // Un producto recién creado se considera parte del inventario del

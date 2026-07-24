@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { desencriptarCosto } from '@/lib/encryption';
+import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
 import { verifyToken } from '@/lib/jwt';
 
 // GET - Obtener un producto por ID (con validación de centro de costo)
@@ -165,26 +166,39 @@ export async function PUT(
     // (para eso está la acción manual "Marcar como actualizado").
     const anioActual = new Date().getFullYear();
     const cantidadCambio = !isNaN(cantidad) && cantidad !== productoActual.cantidad;
+
+    // El codigoBarras (el que se imprime en la etiqueta) se genera al crear
+    // el producto combinando el código y el costo de ese momento. Si el
+    // usuario edita el costo o el código después, hay que regenerarlo -
+    // de lo contrario la etiqueta impresa queda con las letras de costo
+    // viejas aunque el campo "costo" ya se haya actualizado en el sistema.
+    const costoCambio = !!body.costo && body.costo.trim().toUpperCase() !== productoActual.costo;
+    const codigoCambio = body.codigo !== undefined && body.codigo !== productoActual.codigo;
+
+    const nuevoCodigoBarras = (costoCambio || codigoCambio)
+      ? await generarCodigoBarrasUnico(body.codigo, body.costo, prisma)
+      : undefined;
     
     const producto = await prisma.producto.update({
       where: { id },
       data: {
-        proveedor: body.proveedor.toUpperCase(),
-        referencia: body.referencia.toUpperCase(),
-        producto: body.producto.toUpperCase(),
+        proveedor: body.proveedor.trim().toUpperCase(),
+        referencia: body.referencia.trim().toUpperCase(),
+        producto: body.producto.trim().toUpperCase(),
         cantidad: cantidad,
-        unidades: body.unidades.toUpperCase(),
+        unidades: body.unidades.trim().toUpperCase(),
         // Si el formulario que hace el PUT no envía "seccion" (p.ej. la edición
         // rápida desde el producto escaneado), se conserva el valor que ya tenía
         // el producto en vez de borrarlo.
-        seccion: body.seccion ? body.seccion.toUpperCase() : productoActual.seccion,
-        costo: body.costo.toUpperCase(),
+        seccion: body.seccion ? body.seccion.trim().toUpperCase() : productoActual.seccion,
+        costo: body.costo.trim().toUpperCase(),
         costoReal: costoReal,
         precioVenta: body.precioVenta,
         codigo: body.codigo,
-        embalaje: body.embalaje ? body.embalaje.toUpperCase() : null,
+        embalaje: body.embalaje ? body.embalaje.trim().toUpperCase() : null,
         editadoPorId: userId,
         ...(cantidadCambio ? { anioInventario: anioActual } : {}),
+        ...(nuevoCodigoBarras ? { codigoBarras: nuevoCodigoBarras } : {}),
         // NO cambiar centroCostoId al editar
       },
       include: {
