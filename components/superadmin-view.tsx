@@ -186,7 +186,7 @@ export function SuperAdminView() {
             </div>
             <Button
               variant="secondary"
-              onClick={logout}
+              onClick={() => logout()}
               size="sm"
               className="w-full sm:w-auto"
             >

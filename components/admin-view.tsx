@@ -340,7 +340,7 @@ export function AdminView() {
               </Button>
               <Button 
                 variant="outline" 
-                onClick={logout}
+                onClick={() => logout()}
                 size="sm"
                 className="flex-1 sm:flex-none"
               >
