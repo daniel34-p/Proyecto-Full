@@ -10,14 +10,17 @@ datasource db {
 
 model CentroCosto {
   id        String   @id @default(cuid())
-  nombre    String   @unique  // "Metroadornos", "Metroherrajes"
+  nombre    String   @unique
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   usuarios  Usuario[]
   productos Producto[]
+
+  // NUEVO: usuarios que tienen este centro como centro ADICIONAL
+  // (además de su centro principal, o en vez de él si son multi-centro)
+  usuariosAdicionales UsuarioCentroCosto[]
 
   @@index([nombre])
   @@index([activo])
@@ -28,16 +31,20 @@ model Usuario {
   email          String       @unique
   password       String
   nombre         String
-  rol            String       // "asesor", "admin", "superadmin"
+  rol            String
   activo         Boolean      @default(true)
-  centroCostoId  String?      // Solo SuperAdmin no tiene centro de costo
+  centroCostoId  String?
   centroCosto    CentroCosto? @relation(fields: [centroCostoId], references: [id])
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  // Relaciones
   productosCreados  Producto[] @relation("ProductosCreadosPor")
   productosEditados Producto[] @relation("ProductosEditadosPor")
+
+  // NUEVO: centros de costo adicionales (más allá de centroCostoId).
+  // Un Admin/Asesor multi-centro tiene su centro "principal" en
+  // centroCostoId (como siempre) y los demás aquí.
+  centrosCostoAdicionales UsuarioCentroCosto[]
 
   @@index([email])
   @@index([activo])
@@ -97,4 +104,20 @@ model Producto {
   @@index([activo])
   @@index([anioInventario])
   @@index([centroCostoId, anioInventario]) // La combinación que más se consulta
+}
+// NUEVO modelo - tabla puente para la relación muchos-a-muchos entre
+// Usuario y CentroCosto. No modifica ninguna tabla existente; es
+// puramente aditiva (CREATE TABLE en la migración).
+model UsuarioCentroCosto {
+  id            String      @id @default(cuid())
+  usuarioId     String
+  centroCostoId String
+  createdAt     DateTime    @default(now())
+
+  usuario       Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  centroCosto   CentroCosto @relation(fields: [centroCostoId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, centroCostoId])
+  @@index([usuarioId])
+  @@index([centroCostoId])
 }

@@ -1,14 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
+import { usuarioTieneAccesoACentro } from '@/lib/user-centros';
 
 // PATCH - Forzar manualmente si un producto cuenta como "actualizado" en el
 // inventario del año en curso, o como "pendiente" (de un año anterior).
-// Esto NO elimina el producto - solo cambia si se suma en los totales de
-// proveedor/departamento. Pensado para casos donde la cantidad real no
-// cambió pero igual quieres confirmar el producto, o para excluirlo
-// manualmente del conteo (p.ej. se dañó, aunque técnicamente su cantidad
-// en el sistema siga igual).
 //
 // Body esperado: { actualizar: boolean }
 //   actualizar: true  -> anioInventario = año actual
@@ -56,10 +52,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
     }
 
-    // Mismo control de acceso por centro de costo que el resto de endpoints
-    // de productos: un admin/asesor solo puede tocar productos de su centro.
+    // Mismo control de acceso multi-centro que el resto de endpoints de
+    // productos: un admin/asesor solo puede tocar productos de alguno de
+    // sus centros asignados (principal o adicionales).
     if (usuario.rol !== 'superadmin') {
-      if (productoActual.centroCostoId !== usuario.centroCostoId) {
+      const tieneAcceso =
+        productoActual.centroCostoId &&
+        (await usuarioTieneAccesoACentro(usuario, productoActual.centroCostoId));
+      if (!tieneAcceso) {
         return NextResponse.json(
           { error: 'No tienes permiso para modificar este producto' },
           { status: 403 }

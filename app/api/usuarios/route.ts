@@ -3,8 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
 import { verifyToken } from '@/lib/jwt';
 
-// Helper: valida token y que el usuario sea superadmin. Devuelve el usuario
-// autenticado o una respuesta de error lista para retornar.
 async function requireSuperAdmin(request: Request) {
   const authHeader = request.headers.get('authorization');
   const token = authHeader?.replace('Bearer ', '');
@@ -31,6 +29,19 @@ async function requireSuperAdmin(request: Request) {
   return { usuario };
 }
 
+// Helper: arma el array "centrosCosto" (principal + adicionales, sin
+// duplicados) para exponer al frontend en cada usuario.
+function mapearCentrosCosto(usuario: any) {
+  const mapa = new Map<string, { id: string; nombre: string }>();
+  if (usuario.centroCosto) {
+    mapa.set(usuario.centroCosto.id, usuario.centroCosto);
+  }
+  for (const rel of usuario.centrosCostoAdicionales || []) {
+    mapa.set(rel.centroCosto.id, rel.centroCosto);
+  }
+  return Array.from(mapa.values());
+}
+
 // GET - Listar todos los usuarios (solo SuperAdmin)
 export async function GET(request: Request) {
   try {
@@ -38,9 +49,7 @@ export async function GET(request: Request) {
     if (auth.error) return auth.error;
 
     const usuarios = await prisma.usuario.findMany({
-      orderBy: {
-        createdAt: 'desc'
-      },
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         email: true,
@@ -48,30 +57,28 @@ export async function GET(request: Request) {
         rol: true,
         activo: true,
         centroCostoId: true,
-        centroCosto: {
-          select: {
-            id: true,
-            nombre: true,
-          }
+        centroCosto: { select: { id: true, nombre: true } },
+        // NUEVO: centros adicionales, para mostrar la lista completa
+        centrosCostoAdicionales: {
+          select: { centroCosto: { select: { id: true, nombre: true } } },
         },
         createdAt: true,
         updatedAt: true,
         _count: {
-          select: {
-            productosCreados: true,
-            productosEditados: true,
-          }
-        }
-      }
+          select: { productosCreados: true, productosEditados: true },
+        },
+      },
     });
-    
-    return NextResponse.json(usuarios);
+
+    const usuariosConCentros = usuarios.map((u) => ({
+      ...u,
+      centrosCosto: mapearCentrosCosto(u),
+    }));
+
+    return NextResponse.json(usuariosConCentros);
   } catch (error) {
     console.error('Error al obtener usuarios:', error);
-    return NextResponse.json(
-      { error: 'Error al obtener usuarios' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Error al obtener usuarios' }, { status: 500 });
   }
 }
 
@@ -82,8 +89,7 @@ export async function POST(request: Request) {
     if (auth.error) return auth.error;
 
     const body = await request.json();
-    
-    // Validaciones
+
     if (!body.email || !body.password || !body.nombre || !body.rol) {
       return NextResponse.json(
         { error: 'Todos los campos son requeridos' },
@@ -91,27 +97,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validar que SuperAdmin no tenga centro de costo
-    if (body.rol === 'superadmin' && body.centroCostoId) {
+    // Acepta el array nuevo (centrosCostoIds) y, por compatibilidad, el
+    // campo singular viejo (centroCostoId) si algún cliente viejo lo envía.
+    const centrosCostoIds: string[] = Array.isArray(body.centrosCostoIds)
+      ? [...new Set(body.centrosCostoIds as string[])]
+      : body.centroCostoId
+      ? [body.centroCostoId]
+      : [];
+
+    if (body.rol === 'superadmin' && centrosCostoIds.length > 0) {
       return NextResponse.json(
         { error: 'Los SuperAdmin no pueden tener centro de costo asignado' },
         { status: 400 }
       );
     }
 
-    // Validar que Admin y Asesor SÍ tengan centro de costo
-    if ((body.rol === 'admin' || body.rol === 'asesor') && !body.centroCostoId) {
+    if ((body.rol === 'admin' || body.rol === 'asesor') && centrosCostoIds.length === 0) {
       return NextResponse.json(
-        { error: 'Admin y Asesor deben tener un centro de costo asignado' },
+        { error: 'Admin y Asesor deben tener al menos un centro de costo asignado' },
         { status: 400 }
       );
     }
 
-    // Verificar que el email no exista
-    const existente = await prisma.usuario.findUnique({
-      where: { email: body.email }
-    });
-
+    const existente = await prisma.usuario.findUnique({ where: { email: body.email } });
     if (existente) {
       return NextResponse.json(
         { error: 'Ya existe un usuario con ese email' },
@@ -119,30 +127,30 @@ export async function POST(request: Request) {
       );
     }
 
-    // Si tiene centro de costo, verificar que exista y esté activo
-    if (body.centroCostoId) {
-      const centroCosto = await prisma.centroCosto.findUnique({
-        where: { id: body.centroCostoId }
+    if (centrosCostoIds.length > 0) {
+      const centros = await prisma.centroCosto.findMany({
+        where: { id: { in: centrosCostoIds } },
       });
 
-      if (!centroCosto) {
+      if (centros.length !== centrosCostoIds.length) {
         return NextResponse.json(
-          { error: 'El centro de costo seleccionado no existe' },
+          { error: 'Uno o más centros de costo seleccionados no existen' },
           { status: 400 }
         );
       }
 
-      if (!centroCosto.activo) {
+      const inactivo = centros.find((c) => !c.activo);
+      if (inactivo) {
         return NextResponse.json(
-          { error: 'El centro de costo seleccionado está desactivado' },
+          { error: `El centro de costo "${inactivo.nombre}" está desactivado` },
           { status: 400 }
         );
       }
     }
 
-    // Hashear contraseña
     const hashedPassword = await hashPassword(body.password);
-    
+    const [centroPrincipalId, ...centrosAdicionalesIds] = centrosCostoIds;
+
     const usuario = await prisma.usuario.create({
       data: {
         email: body.email,
@@ -150,7 +158,14 @@ export async function POST(request: Request) {
         nombre: body.nombre,
         rol: body.rol,
         activo: true,
-        centroCostoId: body.rol === 'superadmin' ? null : body.centroCostoId,
+        centroCostoId: body.rol === 'superadmin' ? null : centroPrincipalId,
+        ...(centrosAdicionalesIds.length > 0
+          ? {
+              centrosCostoAdicionales: {
+                create: centrosAdicionalesIds.map((id) => ({ centroCostoId: id })),
+              },
+            }
+          : {}),
       },
       select: {
         id: true,
@@ -159,30 +174,28 @@ export async function POST(request: Request) {
         rol: true,
         activo: true,
         centroCostoId: true,
-        centroCosto: {
-          select: {
-            id: true,
-            nombre: true,
-          }
+        centroCosto: { select: { id: true, nombre: true } },
+        centrosCostoAdicionales: {
+          select: { centroCosto: { select: { id: true, nombre: true } } },
         },
         createdAt: true,
-      }
+      },
     });
-    
-    return NextResponse.json(usuario, { status: 201 });
+
+    return NextResponse.json(
+      { ...usuario, centrosCosto: mapearCentrosCosto(usuario) },
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error('Error al crear usuario:', error);
-    
+
     if (error.code === 'P2002') {
       return NextResponse.json(
         { error: 'Ya existe un usuario con ese email' },
         { status: 400 }
       );
     }
-    
-    return NextResponse.json(
-      { error: 'Error al crear usuario' },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: 'Error al crear usuario' }, { status: 500 });
   }
 }

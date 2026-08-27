@@ -54,7 +54,7 @@ export function BarcodeDisplay({
             }
             
             @page {
-              size: 58mm 40mm landscape;
+              size: 40mm 30mm landscape;
               margin: 0;
             }
 
@@ -69,9 +69,9 @@ export function BarcodeDisplay({
             }
             
             .etiqueta-container {
-              width: 58mm;
-              height: 40mm;
-              padding: 2mm;
+              width: 40mm;
+              height: 30mm;
+              padding: 0.8mm 2mm;
               display: flex;
               flex-direction: column;
               justify-content: center;
@@ -83,15 +83,15 @@ export function BarcodeDisplay({
             .info-superior {
               text-align: center;
               width: 100%;
-              margin-bottom: 1mm;
+              margin-bottom: 0.5mm;
             }
             
             .producto-nombre {
-              font-size: 7pt;
+              font-size: 5.5pt;
               font-weight: bold;
-              margin-bottom: 0.5mm;
+              margin-bottom: 0.4mm;
               line-height: 1.1;
-              max-height: 14pt;
+              max-width: 35mm;
               overflow: hidden;
               text-overflow: ellipsis;
               display: -webkit-box;
@@ -100,29 +100,31 @@ export function BarcodeDisplay({
             }
             
             .info-extra {
-              font-size: 6pt;
+              font-size: 4.8pt;
               color: #333;
-              margin-bottom: 0.5mm;
+              margin-bottom: 0.4mm;
+              max-width: 35mm;
             }
             
             .codigo-barras {
               display: flex;
               justify-content: center;
               align-items: center;
-              margin: 1mm 0;
+              margin: 0.5mm 0;
             }
             
             .codigo-barras svg {
-              max-width: 52mm !important;
+              max-width: 35mm !important;
               height: auto !important;
             }
             
             .codigo-texto {
-              font-size: 8pt;
+              font-size: 6.5pt;
               font-weight: bold;
               text-align: center;
-              margin-top: 0.5mm;
-              letter-spacing: 0.5px;
+              margin-top: 0.3mm;
+              letter-spacing: 0.3px;
+              max-width: 35mm;
             }
             
             @media print {
@@ -133,7 +135,7 @@ export function BarcodeDisplay({
               
               .etiqueta-container {
                 margin: 0 !important;
-                padding: 2mm !important;
+                padding: 0.8mm 2mm !important;
               }
             }
           </style>
@@ -152,37 +154,85 @@ export function BarcodeDisplay({
     }, 250);
   };
 
-  // Divide el nombre del producto en máximo 2 líneas que quepan en el ancho
-  // disponible; si aún así no cabe, recorta la segunda línea con "...".
-  const dividirEnDosLineas = (
+  // Prueba varios tamaños de fuente (de mayor a menor) para el nombre del
+  // producto y devuelve el primero que quepa en 2 líneas SIN truncar. Si
+  // ninguno cabe, usa el tamaño más chico de la lista y recorta la 2da
+  // línea con "...". Así, en una etiqueta tan chica, primero se intenta
+  // achicar la letra antes de perder información.
+  const ajustarNombreProducto = (
     ctx: CanvasRenderingContext2D,
     texto: string,
-    anchoMax: number
-  ): [string, string] => {
-    const palabras = texto.trim().split(/\s+/);
-    let linea1 = '';
-    let i = 0;
+    anchoMax: number,
+    tamanios: number[]
+  ): { fontSize: number; linea1: string; linea2: string } => {
+    let ultimoIntento = { fontSize: tamanios[tamanios.length - 1], linea1: '', linea2: '' };
 
-    for (; i < palabras.length; i++) {
-      const intento = linea1 ? `${linea1} ${palabras[i]}` : palabras[i];
-      if (ctx.measureText(intento).width > anchoMax && linea1) break;
-      linea1 = intento;
-    }
+    for (const fontSize of tamanios) {
+      ctx.font = `bold ${fontSize}px Arial`;
+      const palabras = texto.trim().split(/\s+/);
+      let linea1 = '';
+      let i = 0;
 
-    let linea2 = palabras.slice(i).join(' ');
-
-    if (linea2 && ctx.measureText(linea2).width > anchoMax) {
-      while (linea2.length > 3 && ctx.measureText(linea2 + '...').width > anchoMax) {
-        linea2 = linea2.slice(0, -1);
+      for (; i < palabras.length; i++) {
+        const intento = linea1 ? `${linea1} ${palabras[i]}` : palabras[i];
+        if (ctx.measureText(intento).width > anchoMax && linea1) break;
+        linea1 = intento;
       }
-      linea2 = linea2 + '...';
+
+      const linea2 = palabras.slice(i).join(' ');
+      const cabeSinTruncar = !linea2 || ctx.measureText(linea2).width <= anchoMax;
+
+      if (cabeSinTruncar) {
+        return { fontSize, linea1, linea2 };
+      }
+
+      ultimoIntento = { fontSize, linea1, linea2 };
     }
 
-    return [linea1, linea2];
+    // Ningún tamaño cupo sin truncar: recorta la 2da línea del intento
+    // más pequeño con "..." para no salirse de la etiqueta.
+    ctx.font = `bold ${ultimoIntento.fontSize}px Arial`;
+    let linea2 = ultimoIntento.linea2;
+    while (linea2.length > 3 && ctx.measureText(linea2 + '...').width > anchoMax) {
+      linea2 = linea2.slice(0, -1);
+    }
+    if (linea2) linea2 += '...';
+
+    return { ...ultimoIntento, linea2 };
+  };
+
+  // Ajusta una línea de texto de una sola línea (referencia/embalaje o el
+  // código): primero achica la fuente hasta un mínimo; si aun así no cabe,
+  // recorta el texto con "..." como último recurso.
+  const ajustarLineaSimple = (
+    ctx: CanvasRenderingContext2D,
+    texto: string,
+    anchoMax: number,
+    peso: string,
+    tamanioInicial: number,
+    tamanioMin: number
+  ): { fontSize: number; texto: string } => {
+    let fontSize = tamanioInicial;
+    ctx.font = `${peso} ${fontSize}px Arial`;
+
+    while (fontSize > tamanioMin && ctx.measureText(texto).width > anchoMax) {
+      fontSize -= 2;
+      ctx.font = `${peso} ${fontSize}px Arial`;
+    }
+
+    let textoFinal = texto;
+    if (ctx.measureText(textoFinal).width > anchoMax) {
+      while (textoFinal.length > 3 && ctx.measureText(textoFinal + '...').width > anchoMax) {
+        textoFinal = textoFinal.slice(0, -1);
+      }
+      textoFinal += '...';
+    }
+
+    return { fontSize, texto: textoFinal };
   };
 
   // Dibuja la etiqueta completa (nombre, referencia/embalaje, código de
-  // barras y código) en un canvas de 685×472px (58mm × 40mm a ~300 DPI).
+  // barras y código) en un canvas de 472×354px (40mm × 30mm a ~300 DPI).
   // Usada tanto por "Descargar PNG" como por "Imprimir Bluetooth", para que
   // ambas salidas se vean siempre igual y cualquier ajuste futuro solo se
   // haga en un solo lugar.
@@ -190,62 +240,73 @@ export function BarcodeDisplay({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    canvas.width = 685;
-    canvas.height = 472;
+    canvas.width = 472;
+    canvas.height = 354;
 
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'black';
     ctx.textAlign = 'center';
 
-    // Márgenes asimétricos: más margen a la izquierda que a la derecha para
-    // recorrer todo el contenido hacia la derecha dentro de la etiqueta.
-    // Si necesitas correrlo aún más, sube "margenIzquierdo" o baja "margenDerecho".
-    const margenIzquierdo = 80;
-    const margenDerecho = 40;
-    const anchoUtil = canvas.width - margenIzquierdo - margenDerecho;
-    const centroX = margenIzquierdo + anchoUtil / 2;
+    // 1. Margen para Texto (Margen lateral sutilmente aumentado):
+    const margenIzquierdoTexto = 30; // Margen sutil a la izquierda
+    const margenDerechoTexto = 30;   // Margen sutil a la derecha
+    const anchoUtilTexto = canvas.width - margenIzquierdoTexto - margenDerechoTexto;
+    const centroX = canvas.width / 2;
 
-    // Nombre del producto: fuente grande, hasta 2 líneas
-    ctx.font = 'bold 48px Arial';
-    const [linea1, linea2] = dividirEnDosLineas(ctx, producto, anchoUtil);
-    let yPos = 42;
+    // 2. Margen exclusivo para el Código de Barras:
+    const margenIzquierdoBarcode = 50; 
+    const margenDerechoBarcode = 50;
+    const anchoUtilBarcode = canvas.width - margenIzquierdoBarcode - margenDerechoBarcode;
+
+    // Nombre del producto: usa el anchoUtilTexto ajustado
+    const tamaniosNombre = [25, 22, 20, 18];
+    const { fontSize: fuenteNombre, linea1, linea2 } = ajustarNombreProducto(
+      ctx, producto, anchoUtilTexto, tamaniosNombre
+    );
+    ctx.font = `bold ${fuenteNombre}px Arial`;
+    const lineHeight = fuenteNombre + 6;
+    let yPos = fuenteNombre + 8;
     ctx.fillText(linea1, centroX, yPos);
-    yPos += 42;
     if (linea2) {
+      yPos += lineHeight;
       ctx.fillText(linea2, centroX, yPos);
-      yPos += 42;
     }
-    yPos += 6;
+    yPos += lineHeight * 0.45;
 
     // Referencia / Embalaje
     if (embalaje || referencia) {
-      ctx.font = '600 38px Arial';
       const infoExtra = [];
       if (referencia) infoExtra.push(`Ref: ${referencia}`);
       if (embalaje) infoExtra.push(`Emb: ${embalaje}`);
-      ctx.fillText(infoExtra.join('   |   '), centroX, yPos);
-      yPos += 42;
+      const { fontSize: fuenteInfo, texto: textoInfo } = ajustarLineaSimple(
+        ctx, infoExtra.join('  |  '), anchoUtilTexto, '600', 22, 15
+      );
+      ctx.font = `600 ${fuenteInfo}px Arial`;
+      ctx.fillText(textoInfo, centroX, yPos);
+      yPos += fuenteInfo + 6;
     } else {
-      yPos += 10;
+      yPos += 6;
     }
 
-    // Código de barras (usa el espacio restante, dejando solo lo mínimo
-    // reservado para el texto del código, que ahora va pegado justo debajo)
-    const espacioMinCodigo = 42;
+    // Código de barras (Usa su propio espacio reducido: anchoUtilBarcode)
+    const espacioMinCodigo = 30;
     const alturaDisponibleBarcode = canvas.height - yPos - espacioMinCodigo;
     const scale = Math.min(
-      anchoUtil / img.width,
+      anchoUtilBarcode / img.width,
       alturaDisponibleBarcode / img.height
     );
-    const barcodeX = margenIzquierdo + (anchoUtil - img.width * scale) / 2;
+    const barcodeX = (canvas.width - img.width * scale) / 2;
     ctx.drawImage(img, barcodeX, yPos, img.width * scale, img.height * scale);
     const barcodeBottomY = yPos + img.height * scale;
 
-    // Código debajo, grande, en negrita y pegado al código de barras
-    ctx.font = 'bold 40px Arial';
-    const codigoY = Math.min(barcodeBottomY + 60, canvas.height - 10);
-    ctx.fillText(codigo, centroX, codigoY);
+    // Código texto debajo
+    const { fontSize: fuenteCodigo, texto: codigoFinal } = ajustarLineaSimple(
+      ctx, codigo, anchoUtilTexto, 'bold', 26, 16
+    );
+    ctx.font = `bold ${fuenteCodigo}px Arial`;
+    const codigoY = Math.min(barcodeBottomY + fuenteCodigo * 0.85 + 6, canvas.height - 8);
+    ctx.fillText(codigoFinal, centroX, codigoY);
   };
 
   // Carga el SVG del código de barras como imagen y ejecuta el callback con
@@ -297,44 +358,54 @@ export function BarcodeDisplay({
         <DialogHeader>
           <DialogTitle>Código de Barras</DialogTitle>
           <DialogDescription>
-            Listo para imprimir en etiqueta de 58mm × 40mm
+            Listo para imprimir en etiqueta de 40mm × 30mm
           </DialogDescription>
         </DialogHeader>
+
+        {/* Fuerza que el SVG del código de barras escale dentro del ancho de la etiqueta */}
+        <style>{`
+          .barcode-etiqueta-preview svg {
+            width: 100% !important;
+            max-width: 35mm !important;
+            height: auto !important;
+          }
+        `}</style>
 
         <div className="border-2 border-dashed border-gray-300 p-4 bg-gray-50 rounded-md">
           <div 
             ref={printRef} 
             className="etiqueta-container"
             style={{
-              width: '58mm',
-              height: '40mm',
+              width: '40mm',
+              height: '30mm',
               background: 'white',
-              padding: '1mm 2mm',
+              padding: '0.8mm 2mm',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
               alignItems: 'center',
-              textAlign: 'center'
+              textAlign: 'center',
+              overflow: 'hidden'
             }}
           >
             {/* Información superior */}
             <div style={{ 
               textAlign: 'center', 
               width: '100%',
-              marginBottom: '1mm'
+              marginBottom: '0.5mm'
             }}>
               {/* Nombre del producto */}
               <div style={{ 
-                fontSize: '10pt',
+                fontSize: '7pt',
                 fontWeight: 'bold',
-                lineHeight: '1.4',
-                maxWidth: '50mm',
+                lineHeight: '1.2',
+                maxWidth: '35mm',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: 'vertical',
                 display: '-webkit-box',
-                marginBottom: '1mm',
+                marginBottom: '0.5mm',
                 textAlign: 'center'
               }}>
                 {producto}
@@ -343,11 +414,16 @@ export function BarcodeDisplay({
               {/* Embalaje y Referencia */}
               {(embalaje || referencia) && (
               <div style={{
-                fontSize: '9pt',
+                fontSize: '6pt',
                 fontWeight: 600,
                 color: '#000',
-                marginBottom: '2mm',
-                letterSpacing: '0.3px'
+                marginBottom: '1mm',
+                letterSpacing: '0.2px',
+                maxWidth: '35mm',
+                margin: '0 auto',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
               }}>
                 {referencia && `Ref: ${referencia}`}
                 {referencia && embalaje && ' | '}
@@ -357,18 +433,21 @@ export function BarcodeDisplay({
             </div>
 
             {/* Código de barras */}
-            <div style={{ 
-              margin: '1mm 0',
-              width: '100%',
-              display: 'flex',
-              justifyContent: 'center'
-            }}>
+            <div 
+              className="barcode-etiqueta-preview"
+              style={{ 
+                margin: '0.5mm 0',
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center'
+              }}
+            >
               {codigo && (
                 <Barcode
                   value={codigo}
                   format="CODE128"
-                  width={1.8}           // Perfecto para no salirse
-                  height={72}         // Más alto para escaneo
+                  width={1.8}           // Grosor de barra alto para mantener nitidez al escalar
+                  height={55}         // Alto ajustado a la etiqueta de 30mm
                   displayValue={false}
                   margin={0}
                 />
@@ -377,11 +456,15 @@ export function BarcodeDisplay({
 
             {/* Código debajo */}
             <div style={{ 
-              fontSize: '11pt', 
+              fontSize: '8pt', 
               fontWeight: 'bold',
               textAlign: 'center',
-              marginTop: '1mm',
-              letterSpacing: '0.5px'
+              marginTop: '0.5mm',
+              letterSpacing: '0.3px',
+              maxWidth: '35mm',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
             }}>
               {codigo}
             </div>

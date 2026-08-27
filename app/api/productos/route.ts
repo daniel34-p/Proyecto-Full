@@ -3,14 +3,14 @@ import { prisma } from '@/lib/prisma';
 import { desencriptarCosto } from '@/lib/encryption';
 import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
 import { verifyToken } from '@/lib/jwt';
+import { obtenerCentrosDeUsuario } from '@/lib/user-centros';
 
 // GET - Listar productos filtrados por centro de costo, con paginación, filtros y búsqueda
 export async function GET(request: Request) {
   try {
-    // Extraer y verificar token
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
-    
+
     if (!token) {
       return NextResponse.json(
         { error: 'No autorizado' },
@@ -26,7 +26,6 @@ export async function GET(request: Request) {
       );
     }
 
-    // Obtener usuario completo con centro de costo
     const usuario = await prisma.usuario.findUnique({
       where: { id: payload.userId },
       include: { centroCosto: true }
@@ -50,9 +49,6 @@ export async function GET(request: Request) {
     const centroCostoId = searchParams.get('centroCostoId');
     // Coincidencia exacta por referencia, usada por el flujo de "agregar cantidad"
     const referencia = searchParams.get('referencia')?.trim();
-    // Estado del producto respecto al inventario del año actual:
-    // 'activos' (default) = ya actualizado este año, 'inactivos' = pendiente
-    // de años anteriores, 'todos' = sin filtrar.
     const estado = searchParams.get('estado') || 'todos';
     const anioActual = new Date().getFullYear();
 
@@ -65,14 +61,32 @@ export async function GET(request: Request) {
         whereClause.centroCostoId = centroCostoId;
       }
     } else if (usuario.rol === 'admin' || usuario.rol === 'asesor') {
-      // Admin y Asesor solo ven productos de su centro de costo
-      if (!usuario.centroCostoId) {
+      // Usuario multi-centro: se filtra por el centro activo indicado por
+      // el frontend (menú hamburguesa), validando que tenga acceso a él.
+      // Si no viene ninguno, se filtra por TODOS sus centros asignados -
+      // para un usuario de un solo centro esto equivale exactamente al
+      // comportamiento de siempre (whereClause.centroCostoId = su único id).
+      const centrosAsignados = await obtenerCentrosDeUsuario(usuario.id);
+
+      if (centrosAsignados.length === 0) {
         return NextResponse.json(
           { error: 'Usuario sin centro de costo asignado' },
           { status: 403 }
         );
       }
-      whereClause.centroCostoId = usuario.centroCostoId;
+
+      if (centroCostoId && centroCostoId !== 'todos') {
+        const tieneAcceso = centrosAsignados.some((c) => c.id === centroCostoId);
+        if (!tieneAcceso) {
+          return NextResponse.json(
+            { error: 'No tienes acceso a ese centro de costo' },
+            { status: 403 }
+          );
+        }
+        whereClause.centroCostoId = centroCostoId;
+      } else {
+        whereClause.centroCostoId = { in: centrosAsignados.map((c) => c.id) };
+      }
     }
 
     if (proveedor && proveedor !== 'todos') whereClause.proveedor = proveedor;
@@ -99,7 +113,6 @@ export async function GET(request: Request) {
       ];
     }
 
-    // Traer la página solicitada y el total en paralelo
     const includeRelaciones = {
       centroCosto: {
         select: {
@@ -136,12 +149,7 @@ export async function GET(request: Request) {
       prisma.producto.count({ where: whereClause }),
     ]);
 
-    // Si se buscó por referencia exacta (flujo de "agregar cantidad") y no
-    // hubo resultados, se intenta de nuevo con coincidencia parcial antes
-    // de reportar "no encontrado". Esto evita falsos negativos cuando una
-    // referencia quedó guardada con espacios de más (p.ej. pegada desde
-    // Excel o por autocorrección del teclado) - el producto sigue siendo
-    // el mismo, solo que la comparación exacta no coincide letra por letra.
+    // Fallback a coincidencia parcial de referencia si no hubo resultados exactos
     if (referencia && total === 0) {
       const whereFallback = { ...whereClause };
       whereFallback.referencia = { contains: referencia.toUpperCase(), mode: 'insensitive' };
@@ -160,7 +168,7 @@ export async function GET(request: Request) {
       productos = productosFallback;
       total = totalFallback;
     }
-    
+
     return NextResponse.json({
       productos,
       pagination: {
@@ -182,7 +190,6 @@ export async function GET(request: Request) {
 // POST - Crear un nuevo producto
 export async function POST(request: Request) {
   try {
-    // Verificar token en vez de confiar en un userId enviado por el cliente
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
 
@@ -205,8 +212,7 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     console.log('📦 Creando producto con código:', body.codigo);
-    
-    // Buscar usuario y generar código de barras en paralelo (son independientes)
+
     const [usuario, codigoBarras] = await Promise.all([
       prisma.usuario.findUnique({
         where: { id: userId },
@@ -222,22 +228,44 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validar que el usuario tenga centro de costo (excepto superadmin)
-    if (usuario.rol !== 'superadmin' && !usuario.centroCostoId) {
-      return NextResponse.json(
-        { error: 'Usuario sin centro de costo asignado' },
-        { status: 403 }
-      );
+    // Determinar en qué centro de costo se crea el producto. Para
+    // superadmin no aplica (siempre null, como antes). Para admin/asesor:
+    // si el frontend manda un centroCostoId explícito (el "activo" del
+    // menú hamburguesa), se valida que tenga acceso a él; si no manda
+    // nada, se usa su primer centro asignado - así un usuario de un solo
+    // centro sigue funcionando exactamente igual que antes.
+    let centroCostoIdAsignado: string | null = usuario.centroCostoId;
+
+    if (usuario.rol !== 'superadmin') {
+      const centrosAsignados = await obtenerCentrosDeUsuario(usuario.id);
+
+      if (centrosAsignados.length === 0) {
+        return NextResponse.json(
+          { error: 'Usuario sin centro de costo asignado' },
+          { status: 403 }
+        );
+      }
+
+      if (body.centroCostoId) {
+        const tieneAcceso = centrosAsignados.some((c) => c.id === body.centroCostoId);
+        if (!tieneAcceso) {
+          return NextResponse.json(
+            { error: 'No tienes acceso a ese centro de costo' },
+            { status: 403 }
+          );
+        }
+        centroCostoIdAsignado = body.centroCostoId;
+      } else {
+        centroCostoIdAsignado = centrosAsignados[0].id;
+      }
     }
-    
-    // Calcular el costo real desencriptado
+
     const costoReal = desencriptarCosto(body.costo);
-    
+
     console.log('🔢 Código de barras generado:', codigoBarras);
-    
-    // Convertir cantidad a float
+
     const cantidad = parseFloat(body.cantidad);
-    
+
     const producto = await prisma.producto.create({
       data: {
         proveedor: body.proveedor.trim().toUpperCase(),
@@ -253,9 +281,7 @@ export async function POST(request: Request) {
         codigoBarras: codigoBarras,
         embalaje: body.embalaje ? body.embalaje.trim().toUpperCase() : null,
         creadoPorId: userId,
-        centroCostoId: usuario.centroCostoId, // Asignar centro de costo del usuario
-        // Un producto recién creado se considera parte del inventario del
-        // año en curso (recién contado/registrado).
+        centroCostoId: centroCostoIdAsignado,
         anioInventario: new Date().getFullYear(),
       },
       include: {
@@ -273,20 +299,20 @@ export async function POST(request: Request) {
         }
       }
     });
-    
+
     console.log('✅ Producto creado:', producto);
-    
+
     return NextResponse.json(producto, { status: 201 });
   } catch (error: any) {
     console.error('❌ Error al crear producto:', error);
-    
+
     if (error.code === 'P2002') {
       return NextResponse.json(
         { error: 'Error al generar código de barras único. Intenta de nuevo.' },
         { status: 400 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'Error al crear producto' },
       { status: 500 }

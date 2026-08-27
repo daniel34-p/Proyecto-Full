@@ -35,6 +35,8 @@ interface Usuario {
     id: string;
     nombre: string;
   } | null;
+  // NUEVO: lista completa de centros de costo (principal + adicionales)
+  centrosCosto?: { id: string; nombre: string }[];
   _count?: {
     productosCreados: number;
     productosEditados: number;
@@ -57,6 +59,7 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
       usuario.nombre.toLowerCase().includes(search) ||
       usuario.email.toLowerCase().includes(search) ||
       usuario.rol.toLowerCase().includes(search) ||
+      (usuario.centrosCosto || []).some((c) => c.nombre.toLowerCase().includes(search)) ||
       (usuario.centroCosto?.nombre && usuario.centroCosto.nombre.toLowerCase().includes(search))
     );
   });
@@ -134,9 +137,22 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
                           <Building2 className="h-3 w-3 mr-1" />
                           Todos los centros
                         </Badge>
+                      ) : (usuario.centrosCosto?.length || 0) > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {usuario.centrosCosto!.map((c) => (
+                            <Badge
+                              key={c.id}
+                              variant="outline"
+                              className={`${getCentroCostoColor(c.nombre).bg} ${getCentroCostoColor(c.nombre).text} ${getCentroCostoColor(c.nombre).border}`}
+                            >
+                              <Building2 className="h-3 w-3 mr-1" />
+                              {c.nombre}
+                            </Badge>
+                          ))}
+                        </div>
                       ) : usuario.centroCosto ? (
-                        <Badge 
-                          variant="outline" 
+                        <Badge
+                          variant="outline"
                           className={`${getCentroCostoColor(usuario.centroCosto.nombre).bg} ${getCentroCostoColor(usuario.centroCosto.nombre).text} ${getCentroCostoColor(usuario.centroCosto.nombre).border}`}
                         >
                           <Building2 className="h-3 w-3 mr-1" />

@@ -9,11 +9,10 @@ export async function PUT(
 ) {
   try {
     const { id } = await context.params;
-    
-    // Verificar autenticación
+
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
-    
+
     if (!token) {
       return NextResponse.json(
         { error: 'No autorizado' },
@@ -29,7 +28,6 @@ export async function PUT(
       );
     }
 
-    // Obtener usuario
     const usuario = await prisma.usuario.findUnique({
       where: { id: payload.userId }
     });
@@ -41,7 +39,6 @@ export async function PUT(
       );
     }
 
-    // Solo SuperAdmin puede actualizar centros de costo
     if (usuario.rol !== 'superadmin') {
       return NextResponse.json(
         { error: 'No tienes permisos para actualizar centros de costo' },
@@ -51,7 +48,6 @@ export async function PUT(
 
     const body = await request.json();
 
-    // Verificar que el centro existe
     const centroExistente = await prisma.centroCosto.findUnique({
       where: { id }
     });
@@ -63,18 +59,24 @@ export async function PUT(
       );
     }
 
-    // Si se está desactivando, verificar que no tenga usuarios activos asignados
+    // Si se está desactivando, verificar que no tenga usuarios activos
+    // asignados - ni como centro principal, ni como centro adicional
+    // (usuarios multi-centro).
     if (body.activo === false) {
-      const usuariosActivos = await prisma.usuario.count({
-        where: {
-          centroCostoId: id,
-          activo: true,
-        }
-      });
+      const [usuariosActivosPrincipal, usuariosActivosAdicionales] = await Promise.all([
+        prisma.usuario.count({
+          where: { centroCostoId: id, activo: true },
+        }),
+        prisma.usuarioCentroCosto.count({
+          where: { centroCostoId: id, usuario: { activo: true } },
+        }),
+      ]);
 
-      if (usuariosActivos > 0) {
+      const totalUsuariosActivos = usuariosActivosPrincipal + usuariosActivosAdicionales;
+
+      if (totalUsuariosActivos > 0) {
         return NextResponse.json(
-          { error: `No se puede desactivar. Hay ${usuariosActivos} usuario(s) activo(s) asignado(s) a este centro` },
+          { error: `No se puede desactivar. Hay ${totalUsuariosActivos} usuario(s) activo(s) asignado(s) a este centro` },
           { status: 400 }
         );
       }
@@ -99,7 +101,7 @@ export async function PUT(
     return NextResponse.json(centroCosto);
   } catch (error: any) {
     console.error('Error al actualizar centro de costo:', error);
-    
+
     if (error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Centro de costo no encontrado' },
@@ -128,11 +130,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    
-    // Verificar autenticación
+
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
-    
+
     if (!token) {
       return NextResponse.json(
         { error: 'No autorizado' },
@@ -148,7 +149,6 @@ export async function DELETE(
       );
     }
 
-    // Obtener usuario
     const usuario = await prisma.usuario.findUnique({
       where: { id: payload.userId }
     });
@@ -160,7 +160,6 @@ export async function DELETE(
       );
     }
 
-    // Solo SuperAdmin puede eliminar centros de costo
     if (usuario.rol !== 'superadmin') {
       return NextResponse.json(
         { error: 'No tienes permisos para eliminar centros de costo' },
@@ -168,19 +167,22 @@ export async function DELETE(
       );
     }
 
-    // Verificar que no tenga usuarios asociados
-    const usuariosCount = await prisma.usuario.count({
-      where: { centroCostoId: id }
-    });
+    // Verificar que no tenga usuarios asociados (como centro principal
+    // ni como centro adicional)
+    const [usuariosCount, usuariosAdicionalesCount] = await Promise.all([
+      prisma.usuario.count({ where: { centroCostoId: id } }),
+      prisma.usuarioCentroCosto.count({ where: { centroCostoId: id } }),
+    ]);
 
-    if (usuariosCount > 0) {
+    const totalUsuarios = usuariosCount + usuariosAdicionalesCount;
+
+    if (totalUsuarios > 0) {
       return NextResponse.json(
-        { error: `No se puede eliminar. Hay ${usuariosCount} usuario(s) asignado(s) a este centro` },
+        { error: `No se puede eliminar. Hay ${totalUsuarios} usuario(s) asignado(s) a este centro` },
         { status: 400 }
       );
     }
 
-    // Verificar que no tenga productos asociados
     const productosCount = await prisma.producto.count({
       where: { centroCostoId: id }
     });
@@ -199,7 +201,7 @@ export async function DELETE(
     return NextResponse.json({ mensaje: 'Centro de costo eliminado correctamente' });
   } catch (error: any) {
     console.error('Error al eliminar centro de costo:', error);
-    
+
     if (error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Centro de costo no encontrado' },

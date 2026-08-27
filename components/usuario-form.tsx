@@ -34,10 +34,9 @@ interface Usuario {
   rol: string;
   activo: boolean;
   centroCostoId?: string | null;
-  centroCosto?: {
-    id: string;
-    nombre: string;
-  } | null;
+  centroCosto?: { id: string; nombre: string } | null;
+  // NUEVO: lista completa de centros (principal + adicionales)
+  centrosCosto?: { id: string; nombre: string }[];
 }
 
 interface UsuarioFormProps {
@@ -53,8 +52,9 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
     password: '',
     nombre: '',
     rol: 'asesor',
-    centroCostoId: '',
   });
+  // NUEVO: múltiples centros seleccionados (checkboxes) en vez de uno solo
+  const [centrosCostoIds, setCentrosCostoIds] = useState<string[]>([]);
   const [centrosCosto, setCentrosCosto] = useState<CentroCosto[]>([]);
   const [loadingCentros, setLoadingCentros] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,7 +62,6 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const isEditing = !!usuarioToEdit;
 
-  // Cargar centros de costo al abrir el modal
   useEffect(() => {
     if (isOpen) {
       fetchCentrosCosto();
@@ -76,16 +75,14 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
         password: '',
         nombre: usuarioToEdit.nombre,
         rol: usuarioToEdit.rol,
-        centroCostoId: usuarioToEdit.centroCostoId || '',
       });
+      const centrosActuales =
+        usuarioToEdit.centrosCosto?.map((c) => c.id) ||
+        (usuarioToEdit.centroCostoId ? [usuarioToEdit.centroCostoId] : []);
+      setCentrosCostoIds(centrosActuales);
     } else {
-      setFormData({
-        email: '',
-        password: '',
-        nombre: '',
-        rol: 'asesor',
-        centroCostoId: '',
-      });
+      setFormData({ email: '', password: '', nombre: '', rol: 'asesor' });
+      setCentrosCostoIds([]);
     }
   }, [usuarioToEdit]);
 
@@ -94,14 +91,11 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
     try {
       const token = localStorage.getItem('token');
       const response = await fetch('/api/centros-costo', {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
+        headers: { Authorization: token ? `Bearer ${token}` : '' },
       });
 
       if (response.ok) {
         const data = await response.json();
-        // Filtrar solo centros activos
         setCentrosCosto(data.filter((c: CentroCosto) => c.activo));
       }
     } catch (error) {
@@ -111,38 +105,37 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
     }
   };
 
+  const toggleCentro = (id: string) => {
+    setCentrosCostoIds((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Validaciones
     if (!formData.nombre.trim()) {
       setError('El nombre es requerido');
       return;
     }
-
     if (!isEditing && !formData.email.trim()) {
       setError('El email es requerido');
       return;
     }
-
     if (!isEditing && !formData.password) {
       setError('La contraseña es requerida');
       return;
     }
-
     if (formData.password && formData.password.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres');
       return;
     }
-
-    // Validar centro de costo según rol
-    if (formData.rol !== 'superadmin' && !formData.centroCostoId) {
-      setError('Debes seleccionar un centro de costo para Admin y Asesor');
+    if (formData.rol !== 'superadmin' && centrosCostoIds.length === 0) {
+      setError('Debes seleccionar al menos un centro de costo para Admin y Asesor');
       return;
     }
-
-    if (formData.rol === 'superadmin' && formData.centroCostoId) {
+    if (formData.rol === 'superadmin' && centrosCostoIds.length > 0) {
       setError('Los SuperAdmin no pueden tener centro de costo');
       return;
     }
@@ -150,16 +143,13 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
     setIsSubmitting(true);
 
     try {
-      const url = isEditing 
-        ? `/api/usuarios/${usuarioToEdit.id}`
-        : '/api/usuarios';
-      
+      const url = isEditing ? `/api/usuarios/${usuarioToEdit.id}` : '/api/usuarios';
       const method = isEditing ? 'PUT' : 'POST';
 
       const body: any = {
         nombre: formData.nombre,
         rol: formData.rol,
-        centroCostoId: formData.rol === 'superadmin' ? null : formData.centroCostoId || null,
+        centrosCostoIds: formData.rol === 'superadmin' ? [] : centrosCostoIds,
       };
 
       if (!isEditing) {
@@ -178,7 +168,7 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '',
+          Authorization: token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify(body),
       });
@@ -202,20 +192,15 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {isEditing ? 'Editar Usuario' : 'Nuevo Usuario'}
-          </DialogTitle>
+          <DialogTitle>{isEditing ? 'Editar Usuario' : 'Nuevo Usuario'}</DialogTitle>
           <DialogDescription>
-            {isEditing 
-              ? 'Modifica la información del usuario' 
-              : 'Completa los datos para crear un nuevo usuario'}
+            {isEditing ? 'Modifica la información del usuario' : 'Completa los datos para crear un nuevo usuario'}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email - solo en creación */}
           {!isEditing && (
             <div className="space-y-2">
               <Label htmlFor="email">Email *</Label>
@@ -229,22 +214,14 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
             </div>
           )}
 
-          {/* Email - solo lectura en edición */}
           {isEditing && (
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                disabled
-                className="bg-gray-100"
-              />
+              <Input id="email" type="email" value={formData.email} disabled className="bg-gray-100" />
               <p className="text-xs text-gray-500">El email no se puede modificar</p>
             </div>
           )}
 
-          {/* Nombre */}
           <div className="space-y-2">
             <Label htmlFor="nombre">Nombre Completo *</Label>
             <Input
@@ -255,7 +232,6 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
             />
           </div>
 
-          {/* Contraseña */}
           <div className="space-y-2">
             <Label htmlFor="password">
               Contraseña {isEditing ? '(dejar vacío para no cambiar)' : '*'}
@@ -267,23 +243,16 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               placeholder="••••••••"
             />
-            {!isEditing && (
-              <p className="text-xs text-gray-500">Mínimo 6 caracteres</p>
-            )}
+            {!isEditing && <p className="text-xs text-gray-500">Mínimo 6 caracteres</p>}
           </div>
 
-          {/* Rol */}
           <div className="space-y-2">
             <Label htmlFor="rol">Rol *</Label>
             <Select
               value={formData.rol}
               onValueChange={(value) => {
-                setFormData({ 
-                  ...formData, 
-                  rol: value,
-                  // Limpiar centro de costo si es superadmin
-                  centroCostoId: value === 'superadmin' ? '' : formData.centroCostoId
-                });
+                setFormData({ ...formData, rol: value });
+                if (value === 'superadmin') setCentrosCostoIds([]);
               }}
             >
               <SelectTrigger>
@@ -297,54 +266,64 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
             </Select>
           </div>
 
-          {/* Centro de Costo - Solo para Admin y Asesor */}
+          {/* Centros de Costo - selección múltiple para Admin y Asesor.
+              Si se marca más de uno, el usuario podrá navegar entre ellos
+              con el menú hamburguesa, cada uno con su propio inventario. */}
           {requiresCentroCosto && (
             <div className="space-y-2">
-              <Label htmlFor="centroCosto" className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-blue-600" />
-                Centro de Costo *
-              </Label>
-              <div className="flex gap-2">
-                <Select
-                  value={formData.centroCostoId}
-                  onValueChange={(value) => setFormData({ ...formData, centroCostoId: value })}
-                  disabled={loadingCentros}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder={loadingCentros ? "Cargando..." : "Selecciona un centro de costo"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {centrosCosto.length === 0 ? (
-                      <SelectItem value="none" disabled>
-                        No hay centros de costo disponibles
-                      </SelectItem>
-                    ) : (
-                      centrosCosto.map((centro) => (
-                        <SelectItem key={centro.id} value={centro.id}>
-                          {centro.nombre}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-blue-600" />
+                  Centros de Costo *
+                </Label>
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
+                  size="icon-sm"
                   onClick={() => setConfigModalOpen(true)}
                   title="Gestionar centros de costo"
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+
+              {loadingCentros ? (
+                <p className="text-xs text-gray-500">Cargando centros...</p>
+              ) : centrosCosto.length === 0 ? (
+                <p className="text-xs text-gray-500">No hay centros de costo disponibles</p>
+              ) : (
+                <div className="border rounded-md p-2 max-h-48 overflow-y-auto space-y-1">
+                  {centrosCosto.map((centro) => {
+                    const seleccionado = centrosCostoIds.includes(centro.id);
+                    return (
+                      <label
+                        key={centro.id}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
+                          seleccionado ? 'bg-blue-50 text-blue-900' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={seleccionado}
+                          onChange={() => toggleCentro(centro.id)}
+                          className="h-4 w-4"
+                        />
+                        {centro.nombre}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
               <p className="text-xs text-gray-500 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" />
-                El usuario solo podrá ver productos de este centro
+                {centrosCostoIds.length > 1
+                  ? `El usuario podrá navegar entre ${centrosCostoIds.length} centros (menú hamburguesa)`
+                  : 'El usuario solo podrá ver productos de este centro'}
               </p>
             </div>
           )}
 
-          {/* Mensaje informativo para SuperAdmin */}
           {isSuperAdmin && (
             <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
               <p className="text-xs text-purple-700 flex items-center gap-2">
@@ -354,21 +333,15 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md border border-red-200">
               {error}
             </div>
           )}
 
-          {/* Botones */}
           <div className="flex flex-col sm:flex-row gap-2">
             <Button type="submit" disabled={isSubmitting} className="flex-1 w-full">
-              {isSubmitting 
-                ? 'Guardando...' 
-                : isEditing 
-                  ? 'Actualizar' 
-                  : 'Crear Usuario'}
+              {isSubmitting ? 'Guardando...' : isEditing ? 'Actualizar' : 'Crear Usuario'}
             </Button>
             <Button
               type="button"
@@ -382,7 +355,6 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
           </div>
         </form>
 
-        {/* Modal de gestión de centros de costo */}
         <CentrosCostoConfig
           isOpen={configModalOpen}
           onClose={() => setConfigModalOpen(false)}

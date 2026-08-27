@@ -16,6 +16,9 @@ interface User {
   rol: UserRole;
   centroCosto?: CentroCosto | null;
   centroCostoId?: string | null;
+  // NUEVO: lista completa de centros de costo del usuario (principal +
+  // adicionales). Para un usuario de un solo centro, trae un solo elemento.
+  centrosCosto?: CentroCosto[];
 }
 
 interface AuthContextType {
@@ -26,39 +29,45 @@ interface AuthContextType {
   isAsesor: boolean;
   isAuthenticated: boolean;
   centroCosto: CentroCosto | null;
-  // Mensaje para mostrar en la pantalla de login (p.ej. "tu sesión expiró").
-  // Se limpia automáticamente al iniciar sesión de nuevo.
+  // NUEVO: todos los centros del usuario, y cuál está "activo" ahora mismo
+  // (el que se está viendo/editando en pantalla vía el menú hamburguesa).
+  centrosCosto: CentroCosto[];
+  centroCostoActivo: CentroCosto | null;
+  setCentroCostoActivo: (centro: CentroCosto) => void;
   sessionMessage: string | null;
   clearSessionMessage: () => void;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  // logout acepta un mensaje opcional para explicarle al usuario por qué se
-  // cerró la sesión (por ejemplo, cuando expiró en vez de un cierre manual).
   logout: (message?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Lee la fecha de expiración (exp) de un JWT sin verificar su firma - solo
-// para decidir en el cliente si vale la pena intentar usarlo o mostrar el
-// login de una vez. La verificación real (con firma) siempre la hace el
-// servidor en cada request; esto es únicamente para mejorar la experiencia,
-// nunca se usa como control de seguridad.
 function tokenEstaVencido(token: string): boolean {
   try {
     const payloadBase64 = token.split('.')[1];
     if (!payloadBase64) return true;
     const payloadJson = atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/'));
     const payload = JSON.parse(payloadJson);
-    if (!payload.exp) return false; // sin campo exp, dejamos que el servidor decida
+    if (!payload.exp) return false;
     return Date.now() >= payload.exp * 1000;
   } catch {
-    // Si el token no se puede leer, lo tratamos como vencido/ inválido
     return true;
   }
 }
 
+// Deriva la lista de centros de un usuario, con fallback para el caso de
+// un objeto "user" guardado por una sesión antigua que no traía
+// "centrosCosto" (antes de este cambio) - así no se rompe nada para
+// sesiones ya iniciadas.
+function centrosDeUsuario(u: User | null): CentroCosto[] {
+  if (!u) return [];
+  if (u.centrosCosto && u.centrosCosto.length > 0) return u.centrosCosto;
+  return u.centroCosto ? [u.centroCosto] : [];
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [centroCostoActivo, setCentroCostoActivoState] = useState<CentroCosto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
 
@@ -68,15 +77,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (savedUser && savedToken) {
       if (tokenEstaVencido(savedToken)) {
-        // La sesión ya venció - la limpiamos de una vez y mostramos el
-        // login con un mensaje claro, en vez de dejar que el usuario
-        // navegue por la app con una sesión muerta que va a fallar en
-        // cualquier momento (típicamente justo cuando intenta guardar algo).
         localStorage.removeItem('user');
         localStorage.removeItem('token');
+        localStorage.removeItem('centroCostoActivoId');
         setSessionMessage('Tu sesión expiró. Por favor inicia sesión de nuevo.');
       } else {
-        setUser(JSON.parse(savedUser));
+        const parsedUser: User = JSON.parse(savedUser);
+        setUser(parsedUser);
+
+        const centros = centrosDeUsuario(parsedUser);
+        const savedActivoId = localStorage.getItem('centroCostoActivoId');
+        const activo = centros.find((c) => c.id === savedActivoId) || centros[0] || null;
+        setCentroCostoActivoState(activo);
       }
     }
     setIsLoading(false);
@@ -86,9 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
@@ -98,12 +108,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const { user: userData, token } = await response.json();
-      
+
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
       localStorage.setItem('token', token);
       setSessionMessage(null);
-      
+
+      const centros = centrosDeUsuario(userData);
+      const activo = centros[0] || null;
+      setCentroCostoActivoState(activo);
+      if (activo) {
+        localStorage.setItem('centroCostoActivoId', activo.id);
+      } else {
+        localStorage.removeItem('centroCostoActivoId');
+      }
+
       return { success: true };
     } catch (error) {
       return { success: false, error: 'Error de conexión' };
@@ -112,12 +131,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = (message?: string) => {
     setUser(null);
+    setCentroCostoActivoState(null);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    localStorage.removeItem('centroCostoActivoId');
     setSessionMessage(message || null);
   };
 
   const clearSessionMessage = () => setSessionMessage(null);
+
+  const setCentroCostoActivo = (centro: CentroCosto) => {
+    setCentroCostoActivoState(centro);
+    localStorage.setItem('centroCostoActivoId', centro.id);
+  };
 
   if (isLoading) {
     return null;
@@ -133,6 +159,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAsesor: user?.rol === 'asesor',
         isAuthenticated: !!user,
         centroCosto: user?.centroCosto || null,
+        centrosCosto: centrosDeUsuario(user),
+        centroCostoActivo,
+        setCentroCostoActivo,
         sessionMessage,
         clearSessionMessage,
         login,

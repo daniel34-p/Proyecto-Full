@@ -1,20 +1,19 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
+import { obtenerCentrosDeUsuario } from '@/lib/user-centros';
 
 // GET - Estadísticas de inventario (total de productos y valor, agrupado por
-// proveedor y también por departamento/sección). Se calculan trayendo solo
-// los campos numéricos necesarios (no el producto completo con relaciones),
-// para que sea liviano incluso con miles de filas.
+// proveedor y también por departamento/sección).
 //
-// Solo se cuentan productos con anioInventario === año actual, es decir,
-// los que ya fueron confirmados/actualizados en el inventario de este año.
-// Los que quedaron en años anteriores (no se volvieron a contar - agotados,
-// dañados, etc.) no se eliminan, pero tampoco suman en el total.
+// Solo se cuentan productos con anioInventario === año actual.
 //
-// Un SuperAdmin puede pasar ?centroCostoId=<id> para ver las estadísticas
-// de una sola sucursal (usado por la vista de "Sucursales"); sin ese
-// parámetro, ve el total combinado de todos los centros de costo.
+// SuperAdmin puede pasar ?centroCostoId=<id> para ver solo una sucursal;
+// sin ese parámetro, ve el total combinado de todos los centros.
+//
+// Admin/Asesor multi-centro: si mandan centroCostoId (el "activo" del
+// menú hamburguesa), se filtra por ese centro; si no mandan nada, se
+// agregan las estadísticas de TODOS sus centros asignados.
 export async function GET(request: Request) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -39,17 +38,33 @@ export async function GET(request: Request) {
     const anioActual = new Date().getFullYear();
 
     let whereClause: any = { anioInventario: anioActual };
-    if (usuario.rol !== 'superadmin') {
-      if (!usuario.centroCostoId) {
+
+    if (usuario.rol === 'superadmin') {
+      if (centroCostoIdParam && centroCostoIdParam !== 'todos') {
+        whereClause.centroCostoId = centroCostoIdParam;
+      }
+    } else {
+      const centrosAsignados = await obtenerCentrosDeUsuario(usuario.id);
+
+      if (centrosAsignados.length === 0) {
         return NextResponse.json(
           { error: 'Usuario sin centro de costo asignado' },
           { status: 403 }
         );
       }
-      whereClause.centroCostoId = usuario.centroCostoId;
-    } else if (centroCostoIdParam && centroCostoIdParam !== 'todos') {
-      // SuperAdmin consultando una sucursal específica
-      whereClause.centroCostoId = centroCostoIdParam;
+
+      if (centroCostoIdParam && centroCostoIdParam !== 'todos') {
+        const tieneAcceso = centrosAsignados.some((c) => c.id === centroCostoIdParam);
+        if (!tieneAcceso) {
+          return NextResponse.json(
+            { error: 'No tienes acceso a ese centro de costo' },
+            { status: 403 }
+          );
+        }
+        whereClause.centroCostoId = centroCostoIdParam;
+      } else {
+        whereClause.centroCostoId = { in: centrosAsignados.map((c) => c.id) };
+      }
     }
 
     const productos = await prisma.producto.findMany({
@@ -67,7 +82,6 @@ export async function GET(request: Request) {
       porProveedor[p.proveedor].totalProductos += 1;
       porProveedor[p.proveedor].valorTotal += p.costoReal * p.cantidad;
 
-      // Productos antiguos pueden no tener departamento asignado
       const depKey = p.seccion || 'SIN DEPARTAMENTO';
       if (!porDepartamento[depKey]) {
         porDepartamento[depKey] = { nombre: depKey, totalProductos: 0, valorTotal: 0 };

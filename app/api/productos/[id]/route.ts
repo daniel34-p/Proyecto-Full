@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { desencriptarCosto } from '@/lib/encryption';
 import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
 import { verifyToken } from '@/lib/jwt';
+import { usuarioTieneAccesoACentro } from '@/lib/user-centros';
 
 // GET - Obtener un producto por ID (con validación de centro de costo)
 export async function GET(
@@ -11,11 +12,10 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    
-    // Extraer y verificar token
+
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
-    
+
     if (!token) {
       return NextResponse.json(
         { error: 'No autorizado' },
@@ -31,7 +31,6 @@ export async function GET(
       );
     }
 
-    // Obtener usuario
     const usuario = await prisma.usuario.findUnique({
       where: { id: payload.userId }
     });
@@ -42,7 +41,7 @@ export async function GET(
         { status: 404 }
       );
     }
-    
+
     const producto = await prisma.producto.findUnique({
       where: { id },
       include: {
@@ -65,7 +64,7 @@ export async function GET(
         },
       }
     });
-    
+
     if (!producto) {
       return NextResponse.json(
         { error: 'Producto no encontrado' },
@@ -73,16 +72,19 @@ export async function GET(
       );
     }
 
-    // Validar acceso según centro de costo
+    // Validar acceso: SuperAdmin ve todo; Admin/Asesor solo productos de
+    // alguno de sus centros asignados (principal o adicionales)
     if (usuario.rol !== 'superadmin') {
-      if (producto.centroCostoId !== usuario.centroCostoId) {
+      const tieneAcceso =
+        producto.centroCostoId && (await usuarioTieneAccesoACentro(usuario, producto.centroCostoId));
+      if (!tieneAcceso) {
         return NextResponse.json(
           { error: 'No tienes permiso para ver este producto' },
           { status: 403 }
         );
       }
     }
-    
+
     return NextResponse.json(producto);
   } catch (error) {
     console.error('Error al obtener producto:', error);
@@ -101,7 +103,6 @@ export async function PUT(
   try {
     const { id } = await context.params;
 
-    // Verificar token en vez de confiar en un userId enviado por el cliente
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
 
@@ -123,7 +124,6 @@ export async function PUT(
     const userId = payload.userId;
     const body = await request.json();
 
-    // Obtener usuario y producto en paralelo (son consultas independientes)
     const [usuario, productoActual] = await Promise.all([
       prisma.usuario.findUnique({ where: { id: userId } }),
       prisma.producto.findUnique({ where: { id } }),
@@ -143,42 +143,32 @@ export async function PUT(
       );
     }
 
-    // Validar acceso según centro de costo
     if (usuario.rol !== 'superadmin') {
-      if (productoActual.centroCostoId !== usuario.centroCostoId) {
+      const tieneAcceso =
+        productoActual.centroCostoId &&
+        (await usuarioTieneAccesoACentro(usuario, productoActual.centroCostoId));
+      if (!tieneAcceso) {
         return NextResponse.json(
           { error: 'No tienes permiso para editar este producto' },
           { status: 403 }
         );
       }
     }
-    
-    // Calcular el costo real desencriptado
+
     const costoReal = desencriptarCosto(body.costo);
-    
-    // Convertir cantidad a float
+
     const cantidad = parseFloat(body.cantidad);
 
-    // Si la cantidad cambió respecto a lo que ya había, este producto se
-    // considera "confirmado/actualizado" en el inventario del año en curso,
-    // y por lo tanto vuelve a contar en los totales de proveedor/departamento.
-    // Si el usuario simplemente reabre y guarda el mismo valor, no se toca
-    // (para eso está la acción manual "Marcar como actualizado").
     const anioActual = new Date().getFullYear();
     const cantidadCambio = !isNaN(cantidad) && cantidad !== productoActual.cantidad;
 
-    // El codigoBarras (el que se imprime en la etiqueta) se genera al crear
-    // el producto combinando el código y el costo de ese momento. Si el
-    // usuario edita el costo o el código después, hay que regenerarlo -
-    // de lo contrario la etiqueta impresa queda con las letras de costo
-    // viejas aunque el campo "costo" ya se haya actualizado en el sistema.
     const costoCambio = !!body.costo && body.costo.trim().toUpperCase() !== productoActual.costo;
     const codigoCambio = body.codigo !== undefined && body.codigo !== productoActual.codigo;
 
     const nuevoCodigoBarras = (costoCambio || codigoCambio)
       ? await generarCodigoBarrasUnico(body.codigo, body.costo, prisma)
       : undefined;
-    
+
     const producto = await prisma.producto.update({
       where: { id },
       data: {
@@ -187,9 +177,6 @@ export async function PUT(
         producto: body.producto.trim().toUpperCase(),
         cantidad: cantidad,
         unidades: body.unidades.trim().toUpperCase(),
-        // Si el formulario que hace el PUT no envía "seccion" (p.ej. la edición
-        // rápida desde el producto escaneado), se conserva el valor que ya tenía
-        // el producto en vez de borrarlo.
         seccion: body.seccion ? body.seccion.trim().toUpperCase() : productoActual.seccion,
         costo: body.costo.trim().toUpperCase(),
         costoReal: costoReal,
@@ -217,25 +204,25 @@ export async function PUT(
         }
       }
     });
-    
+
     return NextResponse.json(producto);
   } catch (error: any) {
     console.error('Error al actualizar producto:', error);
-    
+
     if (error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Producto no encontrado' },
         { status: 404 }
       );
     }
-    
+
     if (error.code === 'P2002') {
       return NextResponse.json(
         { error: 'Ya existe un producto con ese código' },
         { status: 400 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'Error al actualizar producto' },
       { status: 500 }
@@ -250,11 +237,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    
-    // Extraer y verificar token
+
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
-    
+
     if (!token) {
       return NextResponse.json(
         { error: 'No autorizado' },
@@ -270,7 +256,6 @@ export async function DELETE(
       );
     }
 
-    // Obtener usuario y producto en paralelo (son consultas independientes)
     const [usuario, producto] = await Promise.all([
       prisma.usuario.findUnique({ where: { id: payload.userId } }),
       prisma.producto.findUnique({ where: { id } }),
@@ -290,31 +275,32 @@ export async function DELETE(
       );
     }
 
-    // Validar acceso según centro de costo
     if (usuario.rol !== 'superadmin') {
-      if (producto.centroCostoId !== usuario.centroCostoId) {
+      const tieneAcceso =
+        producto.centroCostoId && (await usuarioTieneAccesoACentro(usuario, producto.centroCostoId));
+      if (!tieneAcceso) {
         return NextResponse.json(
           { error: 'No tienes permiso para eliminar este producto' },
           { status: 403 }
         );
       }
     }
-    
+
     await prisma.producto.delete({
       where: { id }
     });
-    
+
     return NextResponse.json({ mensaje: 'Producto eliminado correctamente' });
   } catch (error: any) {
     console.error('Error al eliminar producto:', error);
-    
+
     if (error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Producto no encontrado' },
         { status: 404 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'Error al eliminar producto' },
       { status: 500 }

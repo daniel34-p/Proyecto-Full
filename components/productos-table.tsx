@@ -344,7 +344,7 @@ export function ProductosTable({
               💡 Desliza horizontalmente para ver más columnas
             </div>
             
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="overflow-x-auto -mx-4 sm:mx-0 xl:max-h-[calc(100vh-150px)] xl:overflow-y-auto">
               <div className="inline-block min-w-full align-middle">
                 <div className="overflow-hidden">
                   <Table>

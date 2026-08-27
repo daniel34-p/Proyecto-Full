@@ -56,15 +56,44 @@ interface ProductoFormProps {
   productoToEdit?: Producto | null;
   onCancelEdit?: () => void;
   mostrarBusqueda?: boolean; // Nuevo prop para controlar si se muestra la búsqueda
+  centroCostoId?: string;       // NUEVO: centro de costo activo (multi-centro)
+  centroCostoNombre?: string;   // NUEVO: nombre del centro activo, para mensajes
 }
 
-export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarBusqueda = false }: ProductoFormProps) {
+// Resultado del buscador cruzado entre agencias (GET /api/productos/buscar-referencia).
+// Es intencionalmente más liviano que Producto: no trae id, costoReal, ni
+// datos de la agencia salvo el nombre (no está disponible ni debería
+// mostrarse info de otra sucursal más allá de lo necesario para clonar).
+interface CatalogoResultado {
+  proveedor: string;
+  referencia: string;
+  producto: string;
+  unidades: string;
+  seccion: string | null;
+  costo: string;
+  precioVenta: string;
+  codigo: string;
+  embalaje: string | null;
+  agencias: string[];
+}
+
+export function ProductoForm({
+  onSuccess,
+  productoToEdit,
+  onCancelEdit,
+  mostrarBusqueda = false,
+  centroCostoId,       // NUEVO
+  centroCostoNombre,   // NUEVO
+}: ProductoFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   // Cuando una acción falla por sesión vencida (401), se muestra un aviso
   // claro y accionable en vez del mensaje crudo "Token inválido".
   const [sessionExpired, setSessionExpired] = useState(false);
-  const { logout } = useAuth();
+  const { logout, centroCosto } = useAuth();
+  // NUEVO: nombre del centro activo, priorizando el prop explícito
+  // (multi-centro) sobre el centro único del contexto de auth.
+  const nombreCentroActivo = centroCostoNombre ?? centroCosto?.nombre;
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | 'secciones' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
@@ -92,6 +121,14 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [cantidadAgregar, setCantidadAgregar] = useState('');
   const [modoAgregar, setModoAgregar] = useState(false);
+
+  // Buscador de catálogo entre agencias (para clonar un producto que ya
+  // existe en otra sucursal, en vez de llenar el formulario desde cero)
+  const [searchCatalogo, setSearchCatalogo] = useState('');
+  const [resultadosCatalogo, setResultadosCatalogo] = useState<CatalogoResultado[]>([]);
+  const [buscandoCatalogo, setBuscandoCatalogo] = useState(false);
+  const [mostrarResultadosCatalogo, setMostrarResultadosCatalogo] = useState(false);
+  const [avisoYaExisteEnMiAgencia, setAvisoYaExisteEnMiAgencia] = useState<string | null>(null);
 
   const {
     register,
@@ -142,8 +179,86 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       setSelectedProveedor('');
       setSelectedUnidades('');
       setSelectedSeccion('');
+      setAvisoYaExisteEnMiAgencia(null);
     }
   }, [productoToEdit, setValue, reset]);
+
+  // Buscador de catálogo entre agencias, con debounce: espera a que el
+  // usuario deje de escribir ~350ms antes de consultar, y solo busca a
+  // partir de 2 caracteres para no disparar consultas por cada tecla.
+  useEffect(() => {
+    if (searchCatalogo.trim().length < 2) {
+      setResultadosCatalogo([]);
+      setMostrarResultadosCatalogo(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setBuscandoCatalogo(true);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(
+          `/api/productos/buscar-referencia?q=${encodeURIComponent(searchCatalogo.trim())}`,
+          { headers: { Authorization: token ? `Bearer ${token}` : '' } }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setResultadosCatalogo(data.resultados || []);
+          setMostrarResultadosCatalogo(true);
+        }
+      } catch (err) {
+        console.error('Error buscando en el catálogo de otras agencias:', err);
+      } finally {
+        setBuscandoCatalogo(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchCatalogo]);
+
+  // Prellena el formulario con un producto encontrado en otra agencia.
+  // Cantidad siempre en 0 (editable) - es un producto nuevo para ESTA
+  // agencia, aunque ya exista en otra.
+  const seleccionarDeCatalogo = (item: CatalogoResultado) => {
+    setValue('proveedor', item.proveedor);
+    setValue('referencia', item.referencia);
+    setValue('producto', item.producto);
+    setValue('cantidad', '0');
+    setValue('unidades', item.unidades);
+    setValue('seccion', item.seccion || '');
+    setValue('costo', item.costo);
+    setValue('precioVenta', item.precioVenta);
+    setValue('codigo', item.codigo);
+    setValue('embalaje', item.embalaje || '');
+
+    setSelectedProveedor(item.proveedor);
+    setSelectedUnidades(item.unidades);
+    setSelectedSeccion(item.seccion || '');
+
+    // Si el proveedor/unidad/sección de la otra agencia no está en las
+    // listas desplegables de este navegador (son personalizadas por
+    // dispositivo, vía localStorage), lo agregamos para que el Select lo
+    // pueda mostrar en vez de quedar en blanco.
+    setProveedores((prev) => (prev.includes(item.proveedor) ? prev : [...prev, item.proveedor]));
+    setUnidades((prev) => (prev.includes(item.unidades) ? prev : [...prev, item.unidades]));
+    if (item.seccion) {
+      setSecciones((prev) => (prev.includes(item.seccion!) ? prev : [...prev, item.seccion!]));
+    }
+
+    setSearchCatalogo('');
+    setMostrarResultadosCatalogo(false);
+
+    // Aviso (no bloqueante) si esta referencia ya existe en la propia
+    // agencia del usuario - probablemente debería usar "Agregar Cantidad"
+    // en vez de crear un producto nuevo, pero se le deja decidir.
+    // NUEVO: usa el centro activo (prop, multi-centro) con fallback al
+    // centro único del contexto de auth.
+    if (nombreCentroActivo && item.agencias.includes(nombreCentroActivo)) {
+      setAvisoYaExisteEnMiAgencia(nombreCentroActivo);
+    } else {
+      setAvisoYaExisteEnMiAgencia(null);
+    }
+  };
 
   // Buscar producto por referencia
   const buscarPorReferencia = async () => {
@@ -159,7 +274,11 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/productos?referencia=${encodeURIComponent(searchRef.trim())}&pageSize=100`, {
+      // NUEVO: si hay un centro activo explícito (multi-centro), la
+      // búsqueda se restringe a ese centro - cada módulo/centro se
+      // comporta como su propio inventario independiente.
+      const centroQuery = centroCostoId ? `&centroCostoId=${encodeURIComponent(centroCostoId)}` : '';
+      const response = await fetch(`/api/productos?referencia=${encodeURIComponent(searchRef.trim())}&pageSize=100${centroQuery}`, {
         headers: {
           'Authorization': token ? `Bearer ${token}` : '',
         },
@@ -296,6 +415,11 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
         body: JSON.stringify({
           ...data,
           userId: JSON.parse(localStorage.getItem('user') || '{}').id,
+          // NUEVO: solo al crear (nunca al editar) - le dice al backend en
+          // qué centro de costo (módulo activo) se está registrando el
+          // producto. Si no viene, el backend usa el centro principal del
+          // usuario, igual que siempre.
+          ...(!isEditing && centroCostoId ? { centroCostoId } : {}),
         }),
       });
 
@@ -321,6 +445,7 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
       setSelectedProveedor('');
       setSelectedUnidades('');
       setSelectedSeccion('');
+      setAvisoYaExisteEnMiAgencia(null);
 
       // "Guardar e Imprimir": mismo diálogo de código de barras que se usa
       // en la tabla de productos ("Imprimir Código"), con los datos del
@@ -513,6 +638,77 @@ export function ProductoForm({ onSuccess, productoToEdit, onCancelEdit, mostrarB
                   </Button>
                 </div>
               </div>
+
+              {/* Buscador de catálogo entre agencias - solo al crear, no al editar */}
+              {!isEditing && (
+                <div className="bg-gradient-to-r from-purple-50 to-fuchsia-50 p-4 rounded-lg border border-purple-200">
+                  <Label htmlFor="searchCatalogo" className="text-purple-900 font-semibold mb-2 block">
+                    🏢 Buscar en otras agencias
+                  </Label>
+                  <p className="text-xs text-purple-700 mb-3">
+                    Si el producto ya existe en otra sucursal, se prellenan sus datos (cantidad en 0 para esta agencia)
+                  </p>
+                  <div className="relative">
+                    <Input
+                      id="searchCatalogo"
+                      value={searchCatalogo}
+                      onChange={(e) => setSearchCatalogo(e.target.value)}
+                      onFocus={() => {
+                        if (resultadosCatalogo.length > 0) setMostrarResultadosCatalogo(true);
+                      }}
+                      onBlur={() => {
+                        // Pequeño retraso para que el clic en un resultado
+                        // alcance a registrarse antes de cerrar la lista.
+                        setTimeout(() => setMostrarResultadosCatalogo(false), 150);
+                      }}
+                      placeholder="Busca por referencia o nombre del producto..."
+                    />
+                    {buscandoCatalogo && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-purple-500">
+                        Buscando...
+                      </span>
+                    )}
+
+                    {mostrarResultadosCatalogo && resultadosCatalogo.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-purple-200 rounded-md shadow-lg max-h-72 overflow-y-auto">
+                        {resultadosCatalogo.map((item, idx) => (
+                          <button
+                            key={`${item.proveedor}-${item.referencia}-${idx}`}
+                            type="button"
+                            onClick={() => seleccionarDeCatalogo(item)}
+                            className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b last:border-b-0 text-sm"
+                          >
+                            <div className="font-medium text-gray-900">{item.producto}</div>
+                            <div className="text-xs text-gray-500">
+                              Ref: {item.referencia} · {item.proveedor}
+                            </div>
+                            <div className="text-xs text-purple-600 mt-0.5">
+                              Ya existe en: {item.agencias.join(', ')}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {mostrarResultadosCatalogo &&
+                      resultadosCatalogo.length === 0 &&
+                      !buscandoCatalogo &&
+                      searchCatalogo.trim().length >= 2 && (
+                        <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg px-3 py-2 text-sm text-gray-500">
+                          No se encontró en ninguna agencia. Puedes registrarlo como nuevo abajo.
+                        </div>
+                      )}
+                  </div>
+
+                  {avisoYaExisteEnMiAgencia && (
+                    <div className="mt-3 p-2 text-xs text-amber-800 bg-amber-50 rounded border border-amber-200">
+                      ⚠️ Esta referencia ya existe en tu agencia ({avisoYaExisteEnMiAgencia}). Si es el mismo
+                      producto, considera usar &quot;Buscar por Referencia&quot; arriba para agregarle cantidad en
+                      vez de crear uno nuevo. Aun así, puedes continuar y guardarlo si es intencional.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="border-t pt-4">
                 <p className="text-sm text-gray-600 mb-4 text-center">
