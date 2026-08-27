@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Building2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Building2, Loader2, Power } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface CentroCosto {
@@ -35,6 +35,7 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
   const [nuevoCentro, setNuevoCentro] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -74,7 +75,6 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
       return;
     }
 
-    // Validar que no exista
     if (centros.some(c => c.nombre.toLowerCase() === nuevoCentro.trim().toLowerCase())) {
       setError('Ya existe un centro de costo con ese nombre');
       return;
@@ -105,8 +105,7 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
       const nuevoCentroCreado = await response.json();
       setCentros([...centros, nuevoCentroCreado]);
       setNuevoCentro('');
-      
-      // Notificar al componente padre
+
       if (onCentroCreado) {
         onCentroCreado();
       }
@@ -135,11 +134,50 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
         throw new Error(errorData.error || 'Error al actualizar centro');
       }
 
-      // Recargar centros
       await cargarCentros();
+      // Avisa al padre (p.ej. la vista de Sucursales) para que refresque
+      // su propia lista y el centro desaparezca/reaparezca donde aplique.
+      if (onCentroCreado) onCentroCreado();
     } catch (err: any) {
       setError(err.message || 'Error al actualizar centro de costo');
       console.error('Error:', err);
+    }
+  };
+
+  // NUEVO: eliminación definitiva. El backend ya valida que no tenga
+  // usuarios (ni como centro principal ni como adicional) ni productos
+  // asociados - si los tiene, devuelve un error explicando cuántos, y
+  // aquí simplemente se lo mostramos al usuario.
+  const eliminarCentro = async (centro: CentroCosto) => {
+    const confirmado = confirm(
+      `¿Eliminar definitivamente "${centro.nombre}"? Esta acción no se puede deshacer. Solo es posible si no tiene usuarios ni productos asignados.`
+    );
+    if (!confirmado) return;
+
+    setEliminandoId(centro.id);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/centros-costo/${centro.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al eliminar centro de costo');
+      }
+
+      await cargarCentros();
+      if (onCentroCreado) onCentroCreado();
+    } catch (err: any) {
+      setError(err.message || 'Error al eliminar centro de costo');
+      console.error('Error:', err);
+    } finally {
+      setEliminandoId(null);
     }
   };
 
@@ -177,8 +215,8 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
                 }}
                 disabled={submitting}
               />
-              <Button 
-                onClick={agregarCentro} 
+              <Button
+                onClick={agregarCentro}
                 size="sm"
                 disabled={submitting || !nuevoCentro.trim()}
               >
@@ -201,7 +239,7 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
           {/* Lista de centros actuales */}
           <div className="space-y-2">
             <Label>Centros de Costo Existentes</Label>
-            
+
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -211,7 +249,7 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
                 No hay centros de costo registrados
               </div>
             ) : (
-              <div className="border rounded-md p-3 max-h-60 overflow-y-auto space-y-2">
+              <div className="border rounded-md p-3 max-h-72 overflow-y-auto space-y-2">
                 {centros.map((centro) => (
                   <div
                     key={centro.id}
@@ -238,18 +276,29 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
                         </div>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleActivoCentro(centro.id, centro.activo)}
-                      title={centro.activo ? 'Desactivar' : 'Activar'}
-                    >
-                      {centro.activo ? (
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      ) : (
-                        <span className="text-xs text-green-600">Activar</span>
-                      )}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => toggleActivoCentro(centro.id, centro.activo)}
+                        title={centro.activo ? 'Desactivar (deja de verse en Sucursales)' : 'Activar de nuevo'}
+                      >
+                        <Power className={`h-4 w-4 ${centro.activo ? 'text-amber-600' : 'text-green-600'}`} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => eliminarCentro(centro)}
+                        disabled={eliminandoId === centro.id}
+                        title="Eliminar definitivamente"
+                      >
+                        {eliminandoId === centro.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-red-600" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -260,9 +309,9 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
           <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-700">
             <p className="font-semibold mb-1">💡 Información:</p>
             <ul className="space-y-1 ml-4">
-              <li>• Los centros desactivados no se pueden asignar a nuevos usuarios</li>
+              <li>• Un centro desactivado deja de aparecer en la vista de Sucursales y no se puede asignar a nuevos usuarios</li>
               <li>• Los usuarios existentes mantienen su centro aunque esté inactivo</li>
-              <li>• No se pueden eliminar centros con usuarios o productos asociados</li>
+              <li>• Eliminar es permanente y solo se puede hacer si el centro no tiene usuarios ni productos asociados</li>
             </ul>
           </div>
 
