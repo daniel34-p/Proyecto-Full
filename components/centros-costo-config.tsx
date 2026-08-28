@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Building2, Loader2, Power } from 'lucide-react';
+import { Plus, Trash2, Building2, Loader2, Power, Pencil, Check, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface CentroCosto {
@@ -36,6 +36,9 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [nombreEditado, setNombreEditado] = useState('');
+  const [guardandoId, setGuardandoId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -141,6 +144,67 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
     } catch (err: any) {
       setError(err.message || 'Error al actualizar centro de costo');
       console.error('Error:', err);
+    }
+  };
+
+  const iniciarEdicion = (centro: CentroCosto) => {
+    setEditandoId(centro.id);
+    setNombreEditado(centro.nombre);
+    setError('');
+  };
+
+  const cancelarEdicion = () => {
+    setEditandoId(null);
+    setNombreEditado('');
+    setError('');
+  };
+
+  const guardarNombre = async (centro: CentroCosto) => {
+    const nombre = nombreEditado.trim();
+
+    if (!nombre) {
+      setError('El nombre del centro de costo no puede estar vacío');
+      return;
+    }
+
+    if (nombre === centro.nombre) {
+      cancelarEdicion();
+      return;
+    }
+
+    if (centros.some(c => c.id !== centro.id && c.nombre.toLowerCase() === nombre.toLowerCase())) {
+      setError('Ya existe un centro de costo con ese nombre');
+      return;
+    }
+
+    setGuardandoId(centro.id);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/centros-costo/${centro.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: JSON.stringify({ nombre }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al actualizar centro de costo');
+      }
+
+      setEditandoId(null);
+      setNombreEditado('');
+      await cargarCentros();
+      if (onCentroCreado) onCentroCreado();
+    } catch (err: any) {
+      setError(err.message || 'Error al actualizar centro de costo');
+      console.error('Error:', err);
+    } finally {
+      setGuardandoId(null);
     }
   };
 
@@ -256,20 +320,45 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
                     className="flex justify-between items-center p-3 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors"
                   >
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-blue-600" />
-                        <span className="font-medium">{centro.nombre}</span>
-                        {centro.activo ? (
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-                            Activo
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
-                            Inactivo
-                          </Badge>
-                        )}
-                      </div>
-                      {centro._count && (
+                      {editandoId === centro.id ? (
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                          <Input
+                            value={nombreEditado}
+                            onChange={(e) => {
+                              setNombreEditado(e.target.value);
+                              setError('');
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                guardarNombre(centro);
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelarEdicion();
+                              }
+                            }}
+                            className="h-8"
+                            autoFocus
+                            disabled={guardandoId === centro.id}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-blue-600" />
+                          <span className="font-medium">{centro.nombre}</span>
+                          {centro.activo ? (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+                              Activo
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
+                              Inactivo
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                      {centro._count && editandoId !== centro.id && (
                         <div className="text-xs text-gray-500 mt-1 ml-6">
                           {centro._count.usuarios} usuario{centro._count.usuarios !== 1 ? 's' : ''} • {' '}
                           {centro._count.productos} producto{centro._count.productos !== 1 ? 's' : ''}
@@ -277,27 +366,64 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => toggleActivoCentro(centro.id, centro.activo)}
-                        title={centro.activo ? 'Desactivar (deja de verse en Sucursales)' : 'Activar de nuevo'}
-                      >
-                        <Power className={`h-4 w-4 ${centro.activo ? 'text-amber-600' : 'text-green-600'}`} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => eliminarCentro(centro)}
-                        disabled={eliminandoId === centro.id}
-                        title="Eliminar definitivamente"
-                      >
-                        {eliminandoId === centro.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-red-600" />
-                        ) : (
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        )}
-                      </Button>
+                      {editandoId === centro.id ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => guardarNombre(centro)}
+                            disabled={guardandoId === centro.id || !nombreEditado.trim()}
+                            title="Guardar nombre"
+                          >
+                            {guardandoId === centro.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-green-600" />
+                            ) : (
+                              <Check className="h-4 w-4 text-green-600" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={cancelarEdicion}
+                            disabled={guardandoId === centro.id}
+                            title="Cancelar"
+                          >
+                            <X className="h-4 w-4 text-gray-500" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => iniciarEdicion(centro)}
+                            title="Editar nombre"
+                          >
+                            <Pencil className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => toggleActivoCentro(centro.id, centro.activo)}
+                            title={centro.activo ? 'Desactivar (deja de verse en Sucursales)' : 'Activar de nuevo'}
+                          >
+                            <Power className={`h-4 w-4 ${centro.activo ? 'text-amber-600' : 'text-green-600'}`} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => eliminarCentro(centro)}
+                            disabled={eliminandoId === centro.id}
+                            title="Eliminar definitivamente"
+                          >
+                            {eliminandoId === centro.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-red-600" />
+                            ) : (
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            )}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -309,6 +435,7 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
           <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-700">
             <p className="font-semibold mb-1">💡 Información:</p>
             <ul className="space-y-1 ml-4">
+              <li>• Puedes editar el nombre de un centro con el lápiz; el cambio se refleja en todos sus usuarios y productos</li>
               <li>• Un centro desactivado deja de aparecer en la vista de Sucursales y no se puede asignar a nuevos usuarios</li>
               <li>• Los usuarios existentes mantienen su centro aunque esté inactivo</li>
               <li>• Eliminar es permanente y solo se puede hacer si el centro no tiene usuarios ni productos asociados</li>

@@ -17,10 +17,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Edit, Power, Trash2, CheckCircle, XCircle, Building2 } from 'lucide-react';
+import { MoreVertical, Edit, Power, Trash2, CheckCircle, XCircle, Building2, ChevronDown } from 'lucide-react';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Usuario {
@@ -73,6 +74,54 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
 
     const roleInfo = roles[rol] || { label: rol, variant: 'outline' };
     return <Badge variant={roleInfo.variant}>{roleInfo.label}</Badge>;
+  };
+
+  const centroBadge = (nombre: string) => {
+    const color = getCentroCostoColor(nombre);
+    return (
+      <Badge
+        variant="outline"
+        className={`${color.bg} ${color.text} ${color.border}`}
+      >
+        <Building2 className="h-3 w-3 mr-1" />
+        {nombre}
+      </Badge>
+    );
+  };
+
+  // Muestra los centros de costo del usuario. Si supera los 2, los agrupa
+  // en una lista desplegable para que la celda no quede amontonada.
+  const renderCentrosCosto = (centros: { id: string; nombre: string }[]) => {
+    if (centros.length <= 2) {
+      return (
+        <div className="flex flex-wrap gap-1">
+          {centros.map((c) => (
+            <span key={c.id}>{centroBadge(c.nombre)}</span>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="h-7 gap-1 font-normal">
+            <Building2 className="h-3 w-3" />
+            {centros.length} centros
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+          <DropdownMenuLabel>Centros de costo ({centros.length})</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {centros.map((c) => (
+            <DropdownMenuItem key={c.id} className="focus:bg-transparent cursor-default">
+              {centroBadge(c.nombre)}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
   };
 
   if (usuarios.length === 0) {
@@ -138,26 +187,9 @@ export function UsuariosTable({ usuarios, onEdit, onToggleStatus, onDelete }: Us
                           Todos los centros
                         </Badge>
                       ) : (usuario.centrosCosto?.length || 0) > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {usuario.centrosCosto!.map((c) => (
-                            <Badge
-                              key={c.id}
-                              variant="outline"
-                              className={`${getCentroCostoColor(c.nombre).bg} ${getCentroCostoColor(c.nombre).text} ${getCentroCostoColor(c.nombre).border}`}
-                            >
-                              <Building2 className="h-3 w-3 mr-1" />
-                              {c.nombre}
-                            </Badge>
-                          ))}
-                        </div>
+                        renderCentrosCosto(usuario.centrosCosto!)
                       ) : usuario.centroCosto ? (
-                        <Badge
-                          variant="outline"
-                          className={`${getCentroCostoColor(usuario.centroCosto.nombre).bg} ${getCentroCostoColor(usuario.centroCosto.nombre).text} ${getCentroCostoColor(usuario.centroCosto.nombre).border}`}
-                        >
-                          <Building2 className="h-3 w-3 mr-1" />
-                          {usuario.centroCosto.nombre}
-                        </Badge>
+                        centroBadge(usuario.centroCosto.nombre)
                       ) : (
                         <span className="text-xs text-red-600">Sin asignar</span>
                       )}
