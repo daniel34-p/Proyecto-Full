@@ -373,7 +373,7 @@ export function BarcodeDisplay({
 
         // AGREGA ESTO AL FINAL DE LA FUNCIÓN:
     // Recorta la imagen exactamente donde termina el texto del código para evitar margen blanco
-    const altoRealContent = Math.min(canvas.height, codigoY + 15);
+    const altoRealContent = Math.min(canvas.height, codigoY + 16);
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = canvas.width;
     tempCanvas.height = altoRealContent;
