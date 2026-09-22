@@ -393,72 +393,98 @@ export function ProductoForm({
     setError('');
   };
 
+  // Hace el POST/PUT real. Si el backend avisa que la referencia ya existe
+  // en esta agencia (duplicado=true) y todavía no se confirmó, le pregunta
+  // al usuario si quiere continuar de todas formas y, si acepta, se vuelve
+  // a llamar a sí misma con confirmarDuplicado=true para forzar la creación.
+  const guardarProducto = async (
+    data: ProductoFormData,
+    imprimir: boolean,
+    confirmarDuplicado: boolean
+  ): Promise<void> => {
+    const url = isEditing
+      ? `/api/productos/${productoToEdit!.id}`
+      : '/api/productos';
+
+    const method = isEditing ? 'PUT' : 'POST';
+
+    const token = localStorage.getItem('token');
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify({
+        ...data,
+        userId: JSON.parse(localStorage.getItem('user') || '{}').id,
+        // NUEVO: solo al crear (nunca al editar) - le dice al backend en
+        // qué centro de costo (módulo activo) se está registrando el
+        // producto. Si no viene, el backend usa el centro principal del
+        // usuario, igual que siempre.
+        ...(!isEditing && centroCostoId ? { centroCostoId } : {}),
+        ...(!isEditing && confirmarDuplicado ? { confirmarDuplicado: true } : {}),
+      }),
+    });
+
+    if (response.status === 401) {
+      // La sesión venció justo al momento de guardar. En vez del mensaje
+      // crudo del servidor, mostramos un aviso claro con la opción de
+      // volver a iniciar sesión - sin perder de golpe lo que el usuario
+      // ya tenía en el formulario.
+      setSessionExpired(true);
+      return;
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json();
+
+      // Referencia duplicada en esta agencia: no se bloquea, se le
+      // pregunta al usuario si de todas formas quiere continuar.
+      if (!isEditing && errorData.duplicado && !confirmarDuplicado) {
+        const continuar = confirm(
+          `${errorData.error}\n\n¿Deseas continuar creando este producto de todas formas?`
+        );
+        if (continuar) {
+          return guardarProducto(data, imprimir, true);
+        }
+        return;
+      }
+
+      throw new Error(errorData.error || 'Error al guardar producto');
+    }
+
+    const productoGuardado = await response.json();
+
+    reset();
+    onSuccess(productoGuardado, isEditing);
+    if (onCancelEdit) onCancelEdit();
+    setSelectedProveedor('');
+    setSelectedUnidades('');
+    setSelectedSeccion('');
+    setAvisoYaExisteEnMiAgencia(null);
+
+    // "Guardar e Imprimir": mismo diálogo de código de barras que se usa
+    // en la tabla de productos ("Imprimir Código"), con los datos del
+    // producto recién guardado.
+    if (imprimir && productoGuardado?.codigoBarras) {
+      setBarcodeModal({
+        isOpen: true,
+        codigo: productoGuardado.codigoBarras,
+        producto: productoGuardado.producto,
+        embalaje: productoGuardado.embalaje || undefined,
+        referencia: productoGuardado.referencia || undefined,
+      });
+    }
+  };
+
   const onSubmit = async (data: ProductoFormData, imprimir: boolean = false) => {
     setIsSubmitting(true);
     setError('');
     setSessionExpired(false);
 
     try {
-      const url = isEditing 
-        ? `/api/productos/${productoToEdit.id}`
-        : '/api/productos';
-      
-      const method = isEditing ? 'PUT' : 'POST';
-
-      const token = localStorage.getItem('token');
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-        body: JSON.stringify({
-          ...data,
-          userId: JSON.parse(localStorage.getItem('user') || '{}').id,
-          // NUEVO: solo al crear (nunca al editar) - le dice al backend en
-          // qué centro de costo (módulo activo) se está registrando el
-          // producto. Si no viene, el backend usa el centro principal del
-          // usuario, igual que siempre.
-          ...(!isEditing && centroCostoId ? { centroCostoId } : {}),
-        }),
-      });
-
-      if (response.status === 401) {
-        // La sesión venció justo al momento de guardar. En vez del mensaje
-        // crudo del servidor, mostramos un aviso claro con la opción de
-        // volver a iniciar sesión - sin perder de golpe lo que el usuario
-        // ya tenía en el formulario.
-        setSessionExpired(true);
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Error al guardar producto');
-      }
-
-      const productoGuardado = await response.json();
-
-      reset();
-      onSuccess(productoGuardado, isEditing);
-      if (onCancelEdit) onCancelEdit();
-      setSelectedProveedor('');
-      setSelectedUnidades('');
-      setSelectedSeccion('');
-      setAvisoYaExisteEnMiAgencia(null);
-
-      // "Guardar e Imprimir": mismo diálogo de código de barras que se usa
-      // en la tabla de productos ("Imprimir Código"), con los datos del
-      // producto recién guardado.
-      if (imprimir && productoGuardado?.codigoBarras) {
-        setBarcodeModal({
-          isOpen: true,
-          codigo: productoGuardado.codigoBarras,
-          producto: productoGuardado.producto,
-          embalaje: productoGuardado.embalaje || undefined,
-          referencia: productoGuardado.referencia || undefined,
-        });
-      }
+      await guardarProducto(data, imprimir, false);
     } catch (err: any) {
       setError(err.message);
     } finally {

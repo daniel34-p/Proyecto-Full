@@ -260,6 +260,30 @@ export async function POST(request: Request) {
       }
     }
 
+    // Avisa si ya existe un producto con esta referencia en la misma
+    // agencia (la referencia es el criterio que el usuario reconoce como
+    // "el mismo producto" - ver buscarPorReferencia en producto-form.tsx).
+    // No bloquea: el frontend le pregunta al usuario si quiere continuar
+    // de todas formas y, si confirma, reenvía con confirmarDuplicado=true.
+    const referenciaNormalizada = body.referencia.trim().toUpperCase();
+
+    if (centroCostoIdAsignado && !body.confirmarDuplicado) {
+      const duplicado = await prisma.producto.findFirst({
+        where: {
+          referencia: referenciaNormalizada,
+          centroCostoId: centroCostoIdAsignado,
+        },
+        select: { id: true },
+      });
+
+      if (duplicado) {
+        return NextResponse.json(
+          { error: 'Ya existe uno o varios productos con esta misma referencia', duplicado: true },
+          { status: 409 }
+        );
+      }
+    }
+
     const costoReal = desencriptarCosto(body.costo);
 
     console.log('🔢 Código de barras generado:', codigoBarras);
@@ -269,7 +293,7 @@ export async function POST(request: Request) {
     const producto = await prisma.producto.create({
       data: {
         proveedor: body.proveedor.trim().toUpperCase(),
-        referencia: body.referencia.trim().toUpperCase(),
+        referencia: referenciaNormalizada,
         producto: body.producto.trim().toUpperCase(),
         cantidad: cantidad,
         unidades: body.unidades.trim().toUpperCase(),
