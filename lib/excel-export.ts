@@ -7,6 +7,7 @@ interface Producto {
   producto: string;
   cantidad: number;
   unidades: string;
+  seccion?: string;
   costo: string;
   costoReal: number;
   precioVenta: string;
@@ -29,40 +30,67 @@ interface Producto {
   };
 }
 
-/**
- * Exporta productos a Excel con hojas separadas por proveedor y formato mejorado
- */
-export function exportarProductosAExcel(productos: Producto[], incluirCostoReal: boolean = false) {
-  // Crear libro de Excel
-  const libro = XLSX.utils.book_new();
+type CampoAgrupacion = 'proveedor' | 'departamento';
 
-  // Agrupar productos por proveedor
-  const productosPorProveedor = productos.reduce((acc, producto) => {
-    const proveedor = producto.proveedor;
-    if (!acc[proveedor]) {
-      acc[proveedor] = [];
+function obtenerClaveGrupo(producto: Producto, campo: CampoAgrupacion): string {
+  if (campo === 'proveedor') return producto.proveedor;
+  return producto.seccion || 'SIN DEPARTAMENTO';
+}
+
+function agruparProductos(productos: Producto[], campo: CampoAgrupacion): Record<string, Producto[]> {
+  return productos.reduce((acc, producto) => {
+    const clave = obtenerClaveGrupo(producto, campo);
+    if (!acc[clave]) {
+      acc[clave] = [];
     }
-    acc[proveedor].push(producto);
+    acc[clave].push(producto);
     return acc;
   }, {} as Record<string, Producto[]>);
+}
 
-  // Crear una hoja por cada proveedor
-  Object.entries(productosPorProveedor).forEach(([proveedor, productosProveedor]) => {
-    const nombreHoja = proveedor.charAt(0).toUpperCase() + proveedor.slice(1);
-    const proveedorMayus = nombreHoja.toUpperCase();
-    
+// Los nombres de hoja de Excel no pueden superar 31 caracteres ni repetirse
+// ni contener : \ / ? * [ ] - esto evita que un departamento con nombre
+// largo (o dos grupos que truncados queden iguales) rompa la exportación.
+function nombreHojaSeguro(nombre: string, usados: Set<string>): string {
+  const base = (nombre.replace(/[:\\/?*[\]]/g, ' ').trim() || 'Grupo').slice(0, 31);
+  let candidato = base;
+  let contador = 2;
+  while (usados.has(candidato.toUpperCase())) {
+    const sufijo = ` (${contador})`;
+    candidato = base.slice(0, 31 - sufijo.length) + sufijo;
+    contador++;
+  }
+  usados.add(candidato.toUpperCase());
+  return candidato;
+}
+
+/**
+ * Construye el libro de Excel agrupando los productos por proveedor o por
+ * departamento (sección), con una hoja por grupo y una hoja de resumen final.
+ */
+function construirLibroAgrupado(
+  productos: Producto[],
+  campo: CampoAgrupacion,
+  incluirCostoReal: boolean
+): XLSX.WorkBook {
+  const libro = XLSX.utils.book_new();
+  const productosPorGrupo = agruparProductos(productos, campo);
+  const etiquetaGrupo = campo === 'proveedor' ? 'PROVEEDOR' : 'DEPARTAMENTO';
+  const nombresUsados = new Set<string>();
+
+  Object.entries(productosPorGrupo).forEach(([grupo, productosGrupo]) => {
+    const nombreGrupo = grupo.charAt(0).toUpperCase() + grupo.slice(1);
+    const grupoMayus = nombreGrupo.toUpperCase();
+    const nombreHoja = nombreHojaSeguro(nombreGrupo, nombresUsados);
+
     // Calcular totales para el encabezado
-    const totalProductosProveedor = productosProveedor.length;
-    const totalCantidad = productosProveedor.reduce((sum, p) => sum + p.cantidad, 0);
-    const totalValorCosto = incluirCostoReal 
-      ? productosProveedor.reduce((sum, p) => sum + (p.costoReal * p.cantidad), 0)
+    const totalProductosGrupo = productosGrupo.length;
+    const totalValorCosto = incluirCostoReal
+      ? productosGrupo.reduce((sum, p) => sum + p.costoReal * p.cantidad, 0)
       : 0;
-    
-    // Preparar array de datos
-    const datosExcel: any[] = [];
-    
+
     // Preparar datos de productos (sin encabezado todavía)
-    const productosData = productosProveedor.map((producto, index) => {
+    const productosData = productosGrupo.map((producto, index) => {
       const fila: any = {
         '#': index + 1,
         'Código': producto.codigo,
@@ -80,12 +108,20 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
       }
 
       fila['Precio Venta'] = parseFloat(producto.precioVenta);
-      
+
+      // Al agrupar por departamento se muestra el proveedor (y viceversa),
+      // así cada hoja sigue mostrando la otra dimensión del producto
+      if (campo === 'proveedor') {
+        fila['Departamento'] = producto.seccion || 'Sin departamento';
+      } else {
+        fila['Proveedor'] = producto.proveedor;
+      }
+
       // Agregar centro de costo si existe
       if (producto.centroCosto) {
         fila['Centro de Costo'] = producto.centroCosto.nombre;
       }
-      
+
       fila['Registrado por'] = producto.creadoPor?.nombre || 'Sin información';
       fila['Fecha Registro'] = new Date(producto.createdAt).toLocaleDateString('es-CO');
 
@@ -94,17 +130,17 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
 
     // Crear la hoja SIN json_to_sheet para poder personalizar el encabezado
     const hoja = XLSX.utils.aoa_to_sheet([]);
-    
+
     // Agregar encabezado personalizado (sin columnas todavía)
     XLSX.utils.sheet_add_aoa(hoja, [
       [`╔═══════════════════════════════════════════════════════════════════════════════════════════╗`],
-      [`║  📦 INVENTARIO - ${proveedorMayus}`],
+      [`║  📦 INVENTARIO - ${etiquetaGrupo}: ${grupoMayus}`],
       [`║  ────────────────────────────────────────────────────────────────────────────────────────`],
-      [`║  Total de productos: ${totalProductosProveedor}`],
+      [`║  Total de productos: ${totalProductosGrupo}`],
     ], { origin: 'A1' });
 
     let currentRow = 4;
-    
+
     if (incluirCostoReal) {
       XLSX.utils.sheet_add_aoa(hoja, [
         [`║  💰 Valor total inventario: $${totalValorCosto.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
@@ -116,19 +152,20 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
       [`╚═══════════════════════════════════════════════════════════════════════════════════════════╝`],
       [], // Línea vacía
     ], { origin: `A${currentRow + 1}` });
-    
+
     currentRow += 2;
 
     // Ahora agregar la tabla de productos con encabezados
-    XLSX.utils.sheet_add_json(hoja, productosData, { 
+    XLSX.utils.sheet_add_json(hoja, productosData, {
       origin: `A${currentRow + 1}`,
-      skipHeader: false 
+      skipHeader: false
     });
 
     // Agregar filas de totales con mejor formato
     if (incluirCostoReal) {
+      const totalCantidad = productosGrupo.reduce((sum, p) => sum + p.cantidad, 0);
       const lastRow = currentRow + productosData.length + 1;
-      
+
       XLSX.utils.sheet_add_aoa(hoja, [
         [], // Línea vacía
         [`═══════════════════════════════════════════════════════════════════════════════════════════`],
@@ -145,23 +182,31 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
         'Costo Real': '',
         'Valor Total': totalValorCosto,
         'Precio Venta': '',
-        'Registrado por': '',
-        'Fecha Registro': '',
       };
 
-      if (productosProveedor.some(p => p.centroCosto)) {
+      if (campo === 'proveedor') {
+        totalRow['Departamento'] = '';
+      } else {
+        totalRow['Proveedor'] = '';
+      }
+
+      totalRow['Registrado por'] = '';
+      totalRow['Fecha Registro'] = '';
+
+      if (productosGrupo.some(p => p.centroCosto)) {
         totalRow['Centro de Costo'] = '';
       }
 
-      XLSX.utils.sheet_add_json(hoja, [totalRow], { 
+      XLSX.utils.sheet_add_json(hoja, [totalRow], {
         origin: `A${lastRow + 3}`,
-        skipHeader: true 
+        skipHeader: true
       });
 
       XLSX.utils.sheet_add_aoa(hoja, [
         [`═══════════════════════════════════════════════════════════════════════════════════════════`],
       ], { origin: `A${lastRow + 4}` });
     }
+
     // Ajustar ancho de columnas de forma más generosa
     const anchosColumnas = [
       { wch: 6 },   // #
@@ -179,12 +224,13 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
     }
 
     anchosColumnas.push({ wch: 16 }); // Precio Venta
-    
+    anchosColumnas.push({ wch: 20 }); // Departamento / Proveedor
+
     // Solo si hay productos con centro de costo
-    if (productosProveedor.some(p => p.centroCosto)) {
+    if (productosGrupo.some(p => p.centroCosto)) {
       anchosColumnas.push({ wch: 20 }); // Centro de Costo
     }
-    
+
     anchosColumnas.push({ wch: 28 }); // Registrado por
     anchosColumnas.push({ wch: 16 }); // Fecha Registro
 
@@ -196,47 +242,97 @@ export function exportarProductosAExcel(productos: Producto[], incluirCostoReal:
 
   // Agregar hoja de resumen al final (mejorada)
   if (incluirCostoReal) {
-    const resumen = calcularResumenMejorado(productos, productosPorProveedor);
+    const resumen = calcularResumenMejorado(productos, productosPorGrupo, campo);
     const hojaResumen = XLSX.utils.json_to_sheet(resumen);
-    
+
     // Ajustar anchos de columna del resumen
     hojaResumen['!cols'] = [
       { wch: 40 },  // Descripción más ancha
       { wch: 28 }   // Valor más ancho
     ];
-    
+
     XLSX.utils.book_append_sheet(libro, hojaResumen, '📊 Resumen');
   }
 
-  // Generar nombre de archivo con fecha y hora
+  return libro;
+}
+
+function nombreArchivoConFecha(prefijo: string): string {
   const ahora = new Date();
   const fecha = ahora.toISOString().split('T')[0];
   const hora = ahora.toTimeString().split(' ')[0].replace(/:/g, '-');
-  const nombreArchivo = `inventario_${fecha}_${hora}.xlsx`;
+  return `${prefijo}_${fecha}_${hora}.xlsx`;
+}
 
-  // Descargar archivo
-  XLSX.writeFile(libro, nombreArchivo);
+/**
+ * Exporta productos a Excel con hojas separadas por proveedor y formato mejorado
+ */
+export function exportarProductosAExcel(productos: Producto[], incluirCostoReal: boolean = false) {
+  const libro = construirLibroAgrupado(productos, 'proveedor', incluirCostoReal);
+  XLSX.writeFile(libro, nombreArchivoConFecha('inventario'));
+}
+
+/**
+ * Exporta productos a Excel con hojas separadas por departamento (sección)
+ */
+export function exportarProductosPorDepartamento(productos: Producto[], incluirCostoReal: boolean = false) {
+  const libro = construirLibroAgrupado(productos, 'departamento', incluirCostoReal);
+  XLSX.writeFile(libro, nombreArchivoConFecha('inventario_por_departamento'));
+}
+
+// Nombre de archivo seguro: sin espacios/acentos/símbolos que puedan
+// romper la descarga en algunos navegadores/sistemas operativos.
+function slugificar(texto: string): string {
+  return texto
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar acentos
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase() || 'agencia';
+}
+
+/**
+ * Exporta el inventario ACTIVO (año de inventario actual) de una agencia en
+ * dos archivos de Excel separados: uno agrupado por proveedor y otro
+ * agrupado por departamento, cada uno con su propia hoja de resumen.
+ *
+ * `productos` debe venir ya filtrado a esa agencia y solo con lo vigente
+ * (ver filtro `estado=activos` de /api/productos, que usa anioInventario).
+ */
+export function exportarInventarioPorAgencia(
+  productos: Producto[],
+  nombreAgencia: string,
+  incluirCostoReal: boolean = false
+) {
+  const slug = slugificar(nombreAgencia);
+
+  const libroProveedor = construirLibroAgrupado(productos, 'proveedor', incluirCostoReal);
+  XLSX.writeFile(libroProveedor, nombreArchivoConFecha(`inventario_${slug}_por_proveedor`));
+
+  const libroDepartamento = construirLibroAgrupado(productos, 'departamento', incluirCostoReal);
+  XLSX.writeFile(libroDepartamento, nombreArchivoConFecha(`inventario_${slug}_por_departamento`));
 }
 
 /**
  * Calcula resumen mejorado del inventario (SIN total unidades)
  */
 function calcularResumenMejorado(
-  productos: Producto[], 
-  productosPorProveedor: Record<string, Producto[]>
+  productos: Producto[],
+  productosPorGrupo: Record<string, Producto[]>,
+  campo: CampoAgrupacion
 ) {
   const ahora = new Date();
-  const fechaFormateada = ahora.toLocaleDateString('es-CO', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  const fechaFormateada = ahora.toLocaleDateString('es-CO', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   });
   const horaFormateada = ahora.toLocaleTimeString('es-CO');
+  const tituloGrupo = campo === 'proveedor' ? 'POR PROVEEDOR' : 'POR DEPARTAMENTO';
 
   const resumen: any[] = [
     { 'Descripción': '═══════════════════════════════════════', 'Valor': '═══════════════════════' },
-    { 'Descripción': '📊 RESUMEN DE INVENTARIO', 'Valor': '' },
+    { 'Descripción': `📊 RESUMEN DE INVENTARIO ${tituloGrupo}`, 'Valor': '' },
     { 'Descripción': '═══════════════════════════════════════', 'Valor': '═══════════════════════' },
     { 'Descripción': `📅 Fecha: ${fechaFormateada}`, 'Valor': '' },
     { 'Descripción': `🕒 Hora: ${horaFormateada}`, 'Valor': '' },
@@ -249,17 +345,17 @@ function calcularResumenMejorado(
     return sum + (p.costoReal * p.cantidad);
   }, 0);
 
-  // Resumen por cada proveedor (MEJORADO - SIN total unidades)
-  Object.entries(productosPorProveedor).forEach(([proveedor, productosProveedor]) => {
-    const proveedorNombre = proveedor.charAt(0).toUpperCase() + proveedor.slice(1);
-    const cantidadProductos = productosProveedor.length;
-    
-    const valorTotal = productosProveedor.reduce((sum, p) => {
+  // Resumen por cada grupo (proveedor o departamento) - SIN total unidades
+  Object.entries(productosPorGrupo).forEach(([grupo, productosGrupo]) => {
+    const nombreGrupo = grupo.charAt(0).toUpperCase() + grupo.slice(1);
+    const cantidadProductos = productosGrupo.length;
+
+    const valorTotal = productosGrupo.reduce((sum, p) => {
       return sum + (p.costoReal * p.cantidad);
     }, 0);
 
     resumen.push(
-      { 'Descripción': `━━━ ${proveedorNombre.toUpperCase()} ━━━`, 'Valor': '' },
+      { 'Descripción': `━━━ ${nombreGrupo.toUpperCase()} ━━━`, 'Valor': '' },
       { 'Descripción': `   📦 Cantidad de productos`, 'Valor': `${cantidadProductos} productos` },
       { 'Descripción': `   💰 TOTAL INVENTARIO`, 'Valor': `$${valorTotal.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
       { 'Descripción': '', 'Valor': '' }

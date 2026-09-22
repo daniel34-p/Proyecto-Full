@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ScannedProductView } from '@/components/scanned-product-view';
 import { Camera, Download, Building2, Loader2 } from 'lucide-react';
-import { exportarProductosAExcel } from '@/lib/excel-export';
+import { exportarInventarioPorAgencia } from '@/lib/excel-export';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
@@ -249,7 +249,16 @@ export function AdminView() {
   const handleExportar = async () => {
     setExportando(true);
     try {
-      const q = { ...queryState, page: 1, pageSize: Math.max(paginacion.total, 1) };
+      // La exportación siempre trae TODO el inventario vigente de la
+      // agencia activa (estado=activos -> anioInventario === año actual),
+      // sin depender de los filtros de búsqueda/proveedor/etc. que tenga
+      // la tabla en pantalla en ese momento.
+      const q: QueryState = {
+        ...QUERY_INICIAL,
+        page: 1,
+        pageSize: 20000,
+        estado: 'activos',
+      };
       const response = await fetch(`/api/productos?${buildQueryString(q)}`, {
         headers: authHeaders(),
       });
@@ -258,7 +267,15 @@ export function AdminView() {
         return;
       }
       const data = await response.json();
-      exportarProductosAExcel(data.productos, true);
+      if (!data.productos || data.productos.length === 0) {
+        alert('No hay productos activos para exportar en esta agencia');
+        return;
+      }
+      exportarInventarioPorAgencia(
+        data.productos,
+        centroCostoActivo?.nombre || 'inventario',
+        true
+      );
     } catch (error) {
       console.error('Error al exportar:', error);
       alert('Error al exportar productos');

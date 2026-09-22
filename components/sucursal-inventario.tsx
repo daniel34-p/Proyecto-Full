@@ -11,7 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Building2 } from 'lucide-react';
+import { ArrowLeft, Building2, Download, Loader2 } from 'lucide-react';
+import { exportarInventarioPorAgencia } from '@/lib/excel-export';
 
 interface Producto {
   id: string;
@@ -102,6 +103,7 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
 
   const [productoToEdit, setProductoToEdit] = useState<Producto | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [exportando, setExportando] = useState(false);
 
   const authHeaders = () => {
     const token = localStorage.getItem('token');
@@ -248,18 +250,63 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
     setProductoToEdit(null);
   };
 
+  const handleExportar = async () => {
+    setExportando(true);
+    try {
+      // Trae TODO el inventario vigente de esta sucursal (estado=activos ->
+      // anioInventario === año actual), sin depender de los filtros que
+      // tenga la tabla en pantalla en ese momento.
+      const params = new URLSearchParams({
+        page: '1',
+        pageSize: '20000',
+        centroCostoId: centroCosto.id,
+        estado: 'activos',
+      });
+      const response = await fetch(`/api/productos?${params.toString()}`, {
+        headers: authHeaders(),
+      });
+      if (!response.ok) {
+        alert('Error al preparar la exportación');
+        return;
+      }
+      const data = await response.json();
+      if (!data.productos || data.productos.length === 0) {
+        alert('No hay productos activos para exportar en esta sucursal');
+        return;
+      }
+      exportarInventarioPorAgencia(data.productos, centroCosto.nombre, true);
+    } catch (error) {
+      console.error('Error al exportar inventario de la sucursal:', error);
+      alert('Error al exportar productos');
+    } finally {
+      setExportando(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Encabezado de la sucursal */}
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={onVolver}>
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Volver a Sucursales
-        </Button>
-        <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-          <Building2 className="h-5 w-5 text-purple-600" />
-          {centroCosto.nombre}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={onVolver}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Volver a Sucursales
+          </Button>
+          <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+            <Building2 className="h-5 w-5 text-purple-600" />
+            {centroCosto.nombre}
+          </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportar}
+          disabled={exportando}
+          className="flex items-center gap-2"
+        >
+          {exportando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {exportando ? 'Exportando...' : 'Exportar Inventario'}
+        </Button>
       </div>
 
       {/* Estadísticas de esta sucursal */}
