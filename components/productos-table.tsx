@@ -370,11 +370,9 @@ export function ProductosTable({
                             Centro de Costo
                           </TableHead>
                         )}
-                        {isAdmin && (
-                          <TableHead className="bg-green-50 text-green-700 font-semibold">
-                            Creado por
-                          </TableHead>
-                        )}
+                        <TableHead className="bg-green-50 text-green-700 font-semibold">
+                          Creado por
+                        </TableHead>
                         <TableHead>Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -436,11 +434,9 @@ export function ProductosTable({
                               )}
                             </TableCell>
                           )}
-                          {isAdmin && (
-                            <TableCell className="bg-green-50 text-green-900 text-sm">
-                              {producto.creadoPor?.nombre || 'Sin info'}
-                            </TableCell>
-                          )}
+                          <TableCell className="bg-green-50 text-green-900 text-sm">
+                            {producto.creadoPor?.nombre || 'Sin info'}
+                          </TableCell>
                           <TableCell>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -467,21 +463,23 @@ export function ProductosTable({
                                   <Printer className="h-4 w-4 mr-2" />
                                   Imprimir Código
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => onMarcarActualizado(producto.id, producto.anioInventario !== anioActual)}
-                                >
-                                  {producto.anioInventario === anioActual ? (
-                                    <>
-                                      <PowerOff className="h-4 w-4 mr-2" />
-                                      Marcar como pendiente
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Power className="h-4 w-4 mr-2" />
-                                      Marcar como {anioActual}
-                                    </>
-                                  )}
-                                </DropdownMenuItem>
+                                {isAdmin && (
+                                  <DropdownMenuItem
+                                    onClick={() => onMarcarActualizado(producto.id, producto.anioInventario !== anioActual)}
+                                  >
+                                    {producto.anioInventario === anioActual ? (
+                                      <>
+                                        <PowerOff className="h-4 w-4 mr-2" />
+                                        Marcar como pendiente
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Power className="h-4 w-4 mr-2" />
+                                        Marcar como {anioActual}
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => onDelete(producto.id)}

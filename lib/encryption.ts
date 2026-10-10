@@ -12,6 +12,19 @@ const ENCRYPTION_MAP: Record<string, string> = {
   'S': '9',
 };
 
+const DIGIT_TO_LETTER: Record<string, string> = Object.fromEntries(
+  Object.entries(ENCRYPTION_MAP).map(([letra, digito]) => [digito, letra])
+);
+
+/**
+ * Encripta un costo numérico real a su código en letras.
+ * Ejemplo: 12 -> "012" -> "HUB"
+ */
+export function encriptarCosto(costoReal: number): string {
+  const digitos = Math.max(0, Math.round(costoReal)).toString();
+  return digitos.split('').map((digito) => DIGIT_TO_LETTER[digito]).join('');
+}
+
 /**
  * Desencripta un costo codificado en letras a su valor numérico
  * Ejemplo: "HUB" -> "012" -> 12

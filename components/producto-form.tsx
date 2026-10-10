@@ -77,6 +77,10 @@ interface CatalogoResultado {
   agencias: string[];
 }
 
+// Ocultado temporalmente a pedido del usuario - la lógica y los estados de
+// búsqueda siguen intactos, solo no se renderiza la sección en el formulario.
+const MOSTRAR_REIMPRIMIR_ETIQUETA = false;
+
 export function ProductoForm({
   onSuccess,
   productoToEdit,
@@ -121,6 +125,17 @@ export function ProductoForm({
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [cantidadAgregar, setCantidadAgregar] = useState('');
   const [modoAgregar, setModoAgregar] = useState(false);
+
+  // Estados para el apartado de "Reimprimir Etiqueta": búsqueda por
+  // referencia independiente de la de "Agregar Cantidad" de arriba. Como
+  // la referencia puede repetirse (varios productos con la misma), se
+  // muestra la lista completa de coincidencias para que el usuario elija
+  // cuál etiqueta imprimir, reutilizando el mismo modal BarcodeDisplay.
+  const [searchRefEtiqueta, setSearchRefEtiqueta] = useState('');
+  const [buscandoEtiqueta, setBuscandoEtiqueta] = useState(false);
+  const [productosParaEtiqueta, setProductosParaEtiqueta] = useState<Producto[]>([]);
+  const [errorEtiqueta, setErrorEtiqueta] = useState('');
+  const [buscoEtiqueta, setBuscoEtiqueta] = useState(false);
 
   // Buscador de catálogo entre agencias (para clonar un producto que ya
   // existe en otra sucursal, en vez de llenar el formulario desde cero)
@@ -314,6 +329,69 @@ export function ProductoForm({
     } finally {
       setSearching(false);
     }
+  };
+
+  // Buscar producto(s) por referencia para reimprimir su etiqueta. A
+  // diferencia de buscarPorReferencia() (que es para agregar cantidad),
+  // esta siempre deja ver la lista completa de coincidencias -incluso si
+  // hay una sola- para que el usuario confirme cuál está por imprimir.
+  const buscarParaImprimirEtiqueta = async () => {
+    if (!searchRefEtiqueta.trim()) {
+      setErrorEtiqueta('Ingresa una referencia para buscar');
+      return;
+    }
+
+    setBuscandoEtiqueta(true);
+    setErrorEtiqueta('');
+    setProductosParaEtiqueta([]);
+    setBuscoEtiqueta(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const centroQuery = centroCostoId ? `&centroCostoId=${encodeURIComponent(centroCostoId)}` : '';
+      const response = await fetch(`/api/productos?referencia=${encodeURIComponent(searchRefEtiqueta.trim())}&pageSize=100${centroQuery}`, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al buscar productos');
+      }
+
+      const data = await response.json();
+      const encontrados: Producto[] = data.productos;
+
+      if (encontrados.length > 0) {
+        setProductosParaEtiqueta(encontrados);
+      } else {
+        setErrorEtiqueta(`No se encontró ningún producto con la referencia "${searchRefEtiqueta}"`);
+      }
+    } catch (err) {
+      setErrorEtiqueta('Error al buscar el producto');
+      console.error(err);
+    } finally {
+      setBuscandoEtiqueta(false);
+    }
+  };
+
+  // Abre el modal de código de barras con los datos del producto elegido
+  // de la lista de resultados de "Reimprimir Etiqueta".
+  const imprimirEtiquetaDe = (producto: Producto) => {
+    setBarcodeModal({
+      isOpen: true,
+      codigo: producto.codigoBarras,
+      producto: producto.producto,
+      embalaje: producto.embalaje,
+      referencia: producto.referencia,
+    });
+  };
+
+  const cancelarBusquedaEtiqueta = () => {
+    setSearchRefEtiqueta('');
+    setProductosParaEtiqueta([]);
+    setErrorEtiqueta('');
+    setBuscoEtiqueta(false);
   };
 
   // Agregar cantidad al producto encontrado
@@ -664,6 +742,103 @@ export function ProductoForm({
                   </Button>
                 </div>
               </div>
+
+              {/* Reimprimir Etiqueta: búsqueda por referencia independiente de la
+                  de arriba, pensada solo para volver a imprimir una etiqueta ya
+                  existente. Si la referencia está repetida (puede haber varios
+                  productos con la misma), se muestra la lista completa para que
+                  el usuario elija cuál imprimir. */}
+              {MOSTRAR_REIMPRIMIR_ETIQUETA && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-lg border border-amber-200">
+                <Label htmlFor="searchRefEtiqueta" className="text-amber-900 font-semibold mb-2 block">
+                  🏷️ Reimprimir Etiqueta
+                </Label>
+                <p className="text-xs text-amber-700 mb-3">
+                  Busca por referencia para volver a imprimir la etiqueta de un producto ya registrado
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    id="searchRefEtiqueta"
+                    value={searchRefEtiqueta}
+                    onChange={(e) => setSearchRefEtiqueta(e.target.value.toUpperCase())}
+                    placeholder="Ej: ABG-69"
+                    className="flex-1 uppercase"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        buscarParaImprimirEtiqueta();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    onClick={buscarParaImprimirEtiqueta}
+                    disabled={buscandoEtiqueta || !searchRefEtiqueta.trim()}
+                    variant="default"
+                    className="bg-amber-600 hover:bg-amber-700"
+                  >
+                    <Search className="h-4 w-4" />
+                    <span className="ml-2 hidden sm:inline">
+                      {buscandoEtiqueta ? 'Buscando...' : 'Buscar'}
+                    </span>
+                  </Button>
+                </div>
+
+                {errorEtiqueta && (
+                  <div className="mt-3 p-2 text-sm text-red-600 bg-red-50 rounded border border-red-200">
+                    {errorEtiqueta}
+                  </div>
+                )}
+
+                {productosParaEtiqueta.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-amber-800 font-medium">
+                      {productosParaEtiqueta.length > 1
+                        ? `Se encontraron ${productosParaEtiqueta.length} productos con esta referencia. Elige cuál imprimir:`
+                        : 'Producto encontrado:'}
+                    </p>
+                    {productosParaEtiqueta.map((producto) => (
+                      <div
+                        key={producto.id}
+                        className="w-full p-3 border-2 border-amber-200 bg-white rounded-lg flex items-center justify-between gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">{producto.producto}</p>
+                          <div className="grid grid-cols-2 gap-x-2 mt-1 text-xs text-gray-600">
+                            <p><strong>Código:</strong> {producto.codigo}</p>
+                            <p><strong>Proveedor:</strong> {producto.proveedor}</p>
+                            <p><strong>Cantidad:</strong> {producto.cantidad} {producto.unidades}</p>
+                            {producto.embalaje && <p><strong>Embalaje:</strong> {producto.embalaje}</p>}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => imprimirEtiquetaDe(producto)}
+                          className="bg-amber-600 hover:bg-amber-700 shrink-0"
+                        >
+                          <Printer className="h-4 w-4 mr-1" />
+                          Imprimir
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {buscoEtiqueta && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={cancelarBusquedaEtiqueta}
+                    className="mt-2 text-amber-700 hover:text-amber-900"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Limpiar búsqueda
+                  </Button>
+                )}
+              </div>
+              )}
 
               {/* Buscador de catálogo entre agencias - solo al crear, no al editar */}
               {!isEditing && (

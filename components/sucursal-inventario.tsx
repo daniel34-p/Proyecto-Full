@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ProductosTable } from '@/components/productos-table';
 import { InventoryStats } from '@/components/inventory-stats';
 import { ProductoForm } from '@/components/producto-form';
+import { ImportarExcel } from '@/components/importar-excel';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -250,6 +251,10 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
     setProductoToEdit(null);
   };
 
+  const handleImportado = async () => {
+    await Promise.all([fetchProductos(queryState), fetchEstadisticas(), fetchOpciones()]);
+  };
+
   const handleExportar = async () => {
     setExportando(true);
     try {
@@ -297,16 +302,23 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
             {centroCosto.nombre}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportar}
-          disabled={exportando}
-          className="flex items-center gap-2"
-        >
-          {exportando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          {exportando ? 'Exportando...' : 'Exportar Inventario'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <ImportarExcel
+            centroCostoId={centroCosto.id}
+            centroCostoNombre={centroCosto.nombre}
+            onImportado={handleImportado}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportar}
+            disabled={exportando}
+            className="flex items-center gap-2"
+          >
+            {exportando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {exportando ? 'Exportando...' : 'Exportar Inventario'}
+          </Button>
+        </div>
       </div>
 
       {/* Estadísticas de esta sucursal */}

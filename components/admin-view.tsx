@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ScannedProductView } from '@/components/scanned-product-view';
+import { ImportarExcel } from '@/components/importar-excel';
 import { Camera, Download, Building2, Loader2 } from 'lucide-react';
 import { exportarInventarioPorAgencia } from '@/lib/excel-export';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
@@ -324,6 +325,13 @@ export function AdminView() {
                 <span className="hidden sm:inline">{exportando ? 'Exportando...' : 'Exportar'}</span>
                 <span className="sm:hidden">{exportando ? '...' : 'Excel'}</span>
               </Button>
+              {centroCostoActivo && (
+                <ImportarExcel
+                  centroCostoId={centroCostoActivo.id}
+                  centroCostoNombre={centroCostoActivo.nombre}
+                  onImportado={handleSuccess}
+                />
+              )}
               <Button
                 variant="outline"
                 onClick={() => setScannerOpen(true)}
