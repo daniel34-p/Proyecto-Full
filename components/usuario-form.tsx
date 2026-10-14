@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
+import { marcarCambiosSinGuardar } from '@/lib/unsaved-changes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,6 +62,14 @@ export function UsuarioForm({ isOpen, onClose, onSuccess, usuarioToEdit }: Usuar
   const [error, setError] = useState('');
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const isEditing = !!usuarioToEdit;
+
+  // Mientras este modal esté abierto se asume que hay datos sin guardar -
+  // VersionWatcher no recarga la página sola hasta que se cierre.
+  const formId = useId();
+  useEffect(() => {
+    marcarCambiosSinGuardar(formId, isOpen);
+    return () => marcarCambiosSinGuardar(formId, false);
+  }, [formId, isOpen]);
 
   useEffect(() => {
     if (isOpen) {

@@ -14,11 +14,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { Plus, Search, X, PackagePlus, ChevronRight, Printer } from 'lucide-react';
 import { OpcionesConfig } from '@/components/opciones-config';
 import { BarcodeDisplay } from '@/components/barcode-display';
 import { useAuth } from '@/lib/auth-context';
+import { marcarCambiosSinGuardar } from '@/lib/unsaved-changes';
 
 interface Producto {
   id: string;
@@ -148,13 +149,21 @@ export function ProductoForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
     setValue,
     reset,
     watch,
   } = useForm<ProductoFormData>({
     resolver: zodResolver(productoSchema),
   });
+
+  // Mientras este formulario tenga cambios sin guardar, VersionWatcher no
+  // recarga la página sola aunque detecte un despliegue nuevo.
+  const formId = useId();
+  useEffect(() => {
+    marcarCambiosSinGuardar(formId, isDirty);
+    return () => marcarCambiosSinGuardar(formId, false);
+  }, [formId, isDirty]);
 
   // Cargar opciones personalizadas
   useEffect(() => {
@@ -189,6 +198,18 @@ export function ProductoForm({
       setSelectedProveedor(productoToEdit.proveedor);
       setSelectedUnidades(productoToEdit.unidades);
       setSelectedSeccion(productoToEdit.seccion || '');
+
+      // Mismo caso que en seleccionarDeCatalogo: si el proveedor/unidad/
+      // departamento de este producto no está en las listas desplegables
+      // de este navegador (p. ej. productos importados por Excel, nunca
+      // escritos a mano en este formulario), el Select queda en blanco
+      // aunque el dato sí esté guardado - se agrega para que se vea
+      // seleccionado correctamente.
+      setProveedores((prev) => (prev.includes(productoToEdit.proveedor) ? prev : [...prev, productoToEdit.proveedor]));
+      setUnidades((prev) => (prev.includes(productoToEdit.unidades) ? prev : [...prev, productoToEdit.unidades]));
+      if (productoToEdit.seccion) {
+        setSecciones((prev) => (prev.includes(productoToEdit.seccion!) ? prev : [...prev, productoToEdit.seccion!]));
+      }
     } else {
       reset();
       setSelectedProveedor('');
