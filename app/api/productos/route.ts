@@ -139,9 +139,10 @@ export async function GET(request: Request) {
     let [productos, total] = await Promise.all([
       prisma.producto.findMany({
         where: whereClause,
-        orderBy: {
-          createdAt: 'desc'
-        },
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: includeRelaciones,
@@ -157,7 +158,10 @@ export async function GET(request: Request) {
       const [productosFallback, totalFallback] = await Promise.all([
         prisma.producto.findMany({
           where: whereFallback,
-          orderBy: { createdAt: 'desc' },
+          orderBy: [
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
           skip: (page - 1) * pageSize,
           take: pageSize,
           include: includeRelaciones,

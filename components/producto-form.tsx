@@ -105,9 +105,6 @@ export function ProductoForm({
   const [secciones, setSecciones] = useState<string[]>(['HERRAJES ALEA', 'SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS',
         'HERRAJES', 'NAVIDAD', 'MILLARES','ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES',
         'ENCAJES', 'VARIOS', 'APLIQUES']);
-  const [selectedProveedor, setSelectedProveedor] = useState('');
-  const [selectedUnidades, setSelectedUnidades] = useState('');
-  const [selectedSeccion, setSelectedSeccion] = useState('');
   const isEditing = !!productoToEdit;
 
   // Modal de código de barras para el botón "Guardar e Imprimir"
@@ -195,9 +192,6 @@ export function ProductoForm({
       setValue('precioVenta', productoToEdit.precioVenta);
       setValue('codigo', productoToEdit.codigo);
       setValue('embalaje', productoToEdit.embalaje || '');
-      setSelectedProveedor(productoToEdit.proveedor);
-      setSelectedUnidades(productoToEdit.unidades);
-      setSelectedSeccion(productoToEdit.seccion || '');
 
       // Mismo caso que en seleccionarDeCatalogo: si el proveedor/unidad/
       // departamento de este producto no está en las listas desplegables
@@ -212,9 +206,6 @@ export function ProductoForm({
       }
     } else {
       reset();
-      setSelectedProveedor('');
-      setSelectedUnidades('');
-      setSelectedSeccion('');
       setAvisoYaExisteEnMiAgencia(null);
     }
   }, [productoToEdit, setValue, reset]);
@@ -266,10 +257,6 @@ export function ProductoForm({
     setValue('precioVenta', item.precioVenta);
     setValue('codigo', item.codigo);
     setValue('embalaje', item.embalaje || '');
-
-    setSelectedProveedor(item.proveedor);
-    setSelectedUnidades(item.unidades);
-    setSelectedSeccion(item.seccion || '');
 
     // Si el proveedor/unidad/sección de la otra agencia no está en las
     // listas desplegables de este navegador (son personalizadas por
@@ -558,9 +545,6 @@ export function ProductoForm({
     reset();
     onSuccess(productoGuardado, isEditing);
     if (onCancelEdit) onCancelEdit();
-    setSelectedProveedor('');
-    setSelectedUnidades('');
-    setSelectedSeccion('');
     setAvisoYaExisteEnMiAgencia(null);
 
     // "Guardar e Imprimir": mismo diálogo de código de barras que se usa
@@ -943,14 +927,13 @@ export function ProductoForm({
                     <Label htmlFor="proveedor">Proveedor *</Label>
                     <div className="flex gap-2">
                       <Select
-                        value={selectedProveedor}
-                        onValueChange={(value) => {
-                          setValue('proveedor', value);
-                          setSelectedProveedor(value);
-                        }}
+                        value={watch('proveedor') || ''}
+                        onValueChange={(value) => setValue('proveedor', value)}
                       >
                         <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Selecciona un proveedor" />
+                          <SelectValue placeholder="Selecciona un proveedor">
+                            {watch('proveedor') || undefined}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {proveedores.map((prov) => (
@@ -1027,14 +1010,13 @@ export function ProductoForm({
                     <Label htmlFor="unidades">Unidades *</Label>
                     <div className="flex gap-2">
                       <Select
-                        value={selectedUnidades}
-                        onValueChange={(value) => {
-                          setValue('unidades', value);
-                          setSelectedUnidades(value);
-                        }}
+                        value={watch('unidades') || ''}
+                        onValueChange={(value) => setValue('unidades', value)}
                       >
                         <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Selecciona unidad" />
+                          <SelectValue placeholder="Selecciona unidad">
+                            {watch('unidades') || undefined}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {unidades.map((unidad) => (
@@ -1064,14 +1046,13 @@ export function ProductoForm({
                     <Label htmlFor="seccion">Departamento *</Label>
                     <div className="flex gap-2">
                       <Select
-                        value={selectedSeccion}
-                        onValueChange={(value) => {
-                          setValue('seccion', value);
-                          setSelectedSeccion(value);
-                        }}
+                        value={watch('seccion') || ''}
+                        onValueChange={(value) => setValue('seccion', value)}
                       >
                         <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Selecciona un departamento" />
+                          <SelectValue placeholder="Selecciona un departamento">
+                            {watch('seccion') || undefined}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {secciones.map((sec) => (
