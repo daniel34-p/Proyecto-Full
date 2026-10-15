@@ -921,7 +921,7 @@ export function ProductoForm({
                   O registra un producto nuevo:
                 </p>
 
-                <form onSubmit={handleSubmit((data) => onSubmit(data))} className="space-y-4">
+                <form onSubmit={handleSubmit((data) => onSubmit(data))} className="space-y-4" autoComplete="off">
                   {/* Proveedor */}
                   <div className="space-y-2">
                     <Label htmlFor="proveedor">Proveedor *</Label>
@@ -963,6 +963,7 @@ export function ProductoForm({
                     <Label htmlFor="referencia">Referencia *</Label>
                     <Input
                       id="referencia"
+                      autoComplete="off"
                       {...register('referencia')}
                       placeholder="Ej: REF-001"
                       className="uppercase"
@@ -981,6 +982,7 @@ export function ProductoForm({
                     <Label htmlFor="producto">Producto *</Label>
                     <Input
                       id="producto"
+                      autoComplete="off"
                       {...register('producto')}
                       placeholder="Nombre del producto"
                     />
@@ -996,6 +998,7 @@ export function ProductoForm({
                       id="cantidad"
                       type="number"
                       step="0.01"
+                      autoComplete="off"
                       {...register('cantidad')}
                       placeholder="Ej: 10 o 62.5"
                     />
@@ -1082,6 +1085,7 @@ export function ProductoForm({
                     <Label htmlFor="costo">Costo (Código) *</Label>
                     <Input
                       id="costo"
+                      autoComplete="off"
                       {...register('costo')}
                       placeholder="X"
                       className="uppercase"
@@ -1096,6 +1100,7 @@ export function ProductoForm({
                     <Label htmlFor="precioVenta">Precio de Venta *</Label>
                     <Input
                       id="precioVenta"
+                      autoComplete="off"
                       {...register('precioVenta')}
                       placeholder="0.00"
                     />
@@ -1110,6 +1115,7 @@ export function ProductoForm({
                     <Input
                       id="codigo"
                       type="number"
+                      autoComplete="off"
                       {...register('codigo')}
                       placeholder="Ej: 123"
                     />
@@ -1124,6 +1130,7 @@ export function ProductoForm({
                     <Label htmlFor="embalaje">Embalaje</Label>
                     <Input
                       id="embalaje"
+                      autoComplete="off"
                       {...register('embalaje')}
                       placeholder="Ej: Caja, Paquete, Bolsa (Opcional)"
                     />

@@ -237,19 +237,8 @@ export function AdminView() {
   };
 
   const handleEdit = (producto: Producto) => {
-    // Este handler se dispara desde un DropdownMenuItem de Radix, cuyo
-    // menú tiene animación de cierre (data-[state=closed]:animate-out,
-    // ~150-200ms vía tw-animate-css). Radix no desmonta el portal del
-    // menú hasta que esa animación termina. Si actualizamos el estado
-    // antes de eso (incluso con un setTimeout de 0ms, que corre casi de
-    // inmediato), el re-render en cascada de la tabla choca con el
-    // desmontaje del portal y produce "Failed to execute 'removeChild'
-    // on 'Node'", que tumba toda la app. Se espera a que la animación
-    // de cierre termine (con margen) antes de tocar el DOM.
-    setTimeout(() => {
-      setProductoToEdit(producto);
-      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 250);
+    setProductoToEdit(producto);
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleCancelEdit = () => setProductoToEdit(null);
