@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ProductoForm } from '@/components/producto-form';
 import { ProductosTable } from '@/components/productos-table';
 import { InventoryStats } from '@/components/inventory-stats';
@@ -82,6 +82,7 @@ export function AdminView() {
   } | null>(null);
 
   const [productoToEdit, setProductoToEdit] = useState<Producto | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Producto | null>(null);
   const { user, logout, centrosCosto, centroCostoActivo, setCentroCostoActivo } = useAuth();
@@ -236,8 +237,15 @@ export function AdminView() {
   };
 
   const handleEdit = (producto: Producto) => {
-    setProductoToEdit(producto);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Se difiere al siguiente tick: este handler se dispara desde un
+    // DropdownMenuItem de Radix, que está cerrando/desmontando su portal
+    // en el mismo evento. Tocar el DOM (setState + scroll) de forma
+    // sincrónica aquí puede chocar con ese desmontaje y producir
+    // "Failed to execute 'removeChild' on 'Node'", que tumba toda la app.
+    setTimeout(() => {
+      setProductoToEdit(producto);
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
   };
 
   const handleCancelEdit = () => setProductoToEdit(null);
@@ -356,7 +364,7 @@ export function AdminView() {
           <InventoryStats estadisticas={estadisticas} loading={loadingStats} />
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 sm:gap-8">
-            <div className="xl:col-span-1 order-2 xl:order-1">
+            <div ref={formRef} className="xl:col-span-1 order-2 xl:order-1">
               <ProductoForm
                 onSuccess={handleSuccess}
                 productoToEdit={productoToEdit}
