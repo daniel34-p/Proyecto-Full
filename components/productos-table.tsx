@@ -194,7 +194,7 @@ export function ProductosTable({
               {loading && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
             </CardTitle>
           </div>
-          
+
           {/* Filtros y búsqueda */}
           <div className="space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -207,7 +207,7 @@ export function ProductosTable({
                   className="w-full"
                 />
               </div>
-              
+
               {/* Filtro Proveedor */}
               <div className="md:col-span-1">
                 <Select value={filtros.proveedor} onValueChange={(v) => onFiltrosChange({ proveedor: v })}>
@@ -224,7 +224,7 @@ export function ProductosTable({
                   </SelectContent>
                 </Select>
               </div>
-              
+
               {/* Filtro Unidades */}
               <div className="md:col-span-1">
                 <Select value={filtros.unidades} onValueChange={(v) => onFiltrosChange({ unidades: v })}>
@@ -311,7 +311,7 @@ export function ProductosTable({
                 </div>
               )}
             </div>
-            
+
             {/* Botón limpiar filtros */}
             {hayFiltrosActivos && (
               <div className="flex justify-end">
@@ -341,163 +341,163 @@ export function ProductosTable({
           <div className={loading ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
             {/* Mensaje informativo en móvil */}
             <div className="block lg:hidden mb-4 p-3 bg-blue-50 rounded-md text-xs text-blue-700">
-              💡 Desliza horizontalmente para ver más columnas
+              💡 Desliza horizontalmente para ver más columnas. La columna de Acciones se mantiene fija (y también Referencia desde tablet en adelante).
             </div>
-            
-            <div className="overflow-x-auto -mx-4 sm:mx-0 xl:max-h-[calc(100vh-150px)] xl:overflow-y-auto">
-              <div className="inline-block min-w-full align-middle">
-                <div className="overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Código</TableHead>
-                        <TableHead>Producto</TableHead>
-                        <TableHead>Proveedor</TableHead>
-                        <TableHead>Referencia</TableHead>
-                        <TableHead>Departamento</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Cantidad</TableHead>
-                        <TableHead>Embalaje</TableHead>
-                        <TableHead>Costo</TableHead>
-                        {isAdmin && (
-                          <TableHead className="bg-blue-50 text-blue-700 font-semibold">
-                            Costo Real
-                          </TableHead>
-                        )}
-                        <TableHead>Precio Venta</TableHead>
-                        {isSuperAdmin && (
-                          <TableHead className="bg-purple-50 text-purple-700 font-semibold">
-                            Centro de Costo
-                          </TableHead>
-                        )}
-                        <TableHead className="bg-green-50 text-green-700 font-semibold">
-                          Creado por
-                        </TableHead>
-                        <TableHead>Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {productos.map((producto) => (
-                        <TableRow
-                          key={producto.id}
-                          className={producto.anioInventario !== anioActual ? 'bg-red-50 hover:bg-red-100/70' : undefined}
-                        >
-                          <TableCell className="font-medium">{producto.codigo}</TableCell>
-                          <TableCell>{producto.producto}</TableCell>
-                          <TableCell className="capitalize">{producto.proveedor}</TableCell>
-                          <TableCell>{producto.referencia}</TableCell>
-                          <TableCell>
-                            {producto.seccion ? (
-                              <Badge variant="outline">{producto.seccion}</Badge>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {producto.anioInventario === anioActual ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-                                {producto.anioInventario}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-red-100 text-red-600 border-red-300">
-                                {producto.anioInventario}
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {producto.cantidad} {producto.unidades}
-                          </TableCell>
-                          <TableCell>
-                            {producto.embalaje || '-'}
-                          </TableCell>
-                          <TableCell className="uppercase font-mono">
-                            {producto.costo}
-                          </TableCell>
-                          {isAdmin && (
-                            <TableCell className="bg-blue-50 font-semibold text-blue-900">
-                              ${formatearCostoReal(producto.costoReal)}
-                            </TableCell>
-                          )}
-                          <TableCell>${producto.precioVenta}</TableCell>
-                          {isSuperAdmin && (
-                            <TableCell className="bg-purple-50">
-                              {producto.centroCosto ? (
-                                <Badge 
-                                  variant="outline" 
-                                  className={`${getCentroCostoColor(producto.centroCosto.nombre).bg} ${getCentroCostoColor(producto.centroCosto.nombre).text} ${getCentroCostoColor(producto.centroCosto.nombre).border}`}
-                                >
-                                  <Building2 className="h-3 w-3 mr-1" />
-                                  {producto.centroCosto.nombre}
-                                </Badge>
-                              ) : (
-                                <span className="text-gray-400 text-xs">Sin asignar</span>
-                              )}
-                            </TableCell>
-                          )}
-                          <TableCell className="bg-green-50 text-green-900 text-sm">
-                            {producto.creadoPor?.nombre || 'Sin info'}
-                          </TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => onEdit(producto)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Editar
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setBarcodeModal({
-                                      isOpen: true,
-                                      codigo: producto.codigoBarras,
-                                      producto: producto.producto,
-                                      embalaje: producto.embalaje,
-                                      referencia: producto.referencia,
-                                    });
-                                  }}
-                                >
-                                  <Printer className="h-4 w-4 mr-2" />
-                                  Imprimir Código
-                                </DropdownMenuItem>
-                                {isAdmin && (
-                                  <DropdownMenuItem
-                                    onClick={() => onMarcarActualizado(producto.id, producto.anioInventario !== anioActual)}
-                                  >
-                                    {producto.anioInventario === anioActual ? (
-                                      <>
-                                        <PowerOff className="h-4 w-4 mr-2" />
-                                        Marcar como pendiente
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Power className="h-4 w-4 mr-2" />
-                                        Marcar como {anioActual}
-                                      </>
-                                    )}
-                                  </DropdownMenuItem>
+
+            <Table containerClassName="-mx-4 sm:mx-0 max-h-[calc(100vh-220px)] overflow-y-auto">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="sticky left-0 top-0 z-30 w-24 min-w-24 bg-card">Acciones</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card lg:left-24 lg:z-30">Referencia</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Producto</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Proveedor</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Departamento</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Estado</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Cantidad</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Embalaje</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Código</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Costo</TableHead>
+                  {isAdmin && (
+                    <TableHead className="sticky top-0 z-20 bg-blue-50 text-blue-700 font-semibold">
+                      Costo Real
+                    </TableHead>
+                  )}
+                  <TableHead className="sticky top-0 z-20 bg-card">Precio Venta</TableHead>
+                  {isSuperAdmin && (
+                    <TableHead className="sticky top-0 z-20 bg-purple-50 text-purple-700 font-semibold">
+                      Centro de Costo
+                    </TableHead>
+                  )}
+                  <TableHead className="sticky top-0 z-20 bg-green-50 text-green-700 font-semibold">
+                    Creado por
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {productos.map((producto) => {
+                  const pendiente = producto.anioInventario !== anioActual;
+                  const stickyColClass = pendiente
+                    ? 'bg-red-50 group-hover:bg-red-100/70'
+                    : 'bg-card group-hover:bg-muted/50';
+                  return (
+                    <TableRow
+                      key={producto.id}
+                      className={pendiente ? 'group bg-red-50 hover:bg-red-100/70' : 'group'}
+                    >
+                      <TableCell className={`sticky left-0 z-10 w-24 min-w-24 ${stickyColClass}`}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => onEdit(producto)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setBarcodeModal({
+                                  isOpen: true,
+                                  codigo: producto.codigoBarras,
+                                  producto: producto.producto,
+                                  embalaje: producto.embalaje,
+                                  referencia: producto.referencia,
+                                });
+                              }}
+                            >
+                              <Printer className="h-4 w-4 mr-2" />
+                              Imprimir Código
+                            </DropdownMenuItem>
+                            {isAdmin && (
+                              <DropdownMenuItem
+                                onClick={() => onMarcarActualizado(producto.id, producto.anioInventario !== anioActual)}
+                              >
+                                {producto.anioInventario === anioActual ? (
+                                  <>
+                                    <PowerOff className="h-4 w-4 mr-2" />
+                                    Marcar como pendiente
+                                  </>
+                                ) : (
+                                  <>
+                                    <Power className="h-4 w-4 mr-2" />
+                                    Marcar como {anioActual}
+                                  </>
                                 )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => onDelete(producto.id)}
-                                  className="text-red-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Eliminar
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => onDelete(producto.id)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                      <TableCell className={`font-medium lg:sticky lg:left-24 lg:z-10 ${stickyColClass}`}>{producto.referencia}</TableCell>
+                      <TableCell>{producto.producto}</TableCell>
+                      <TableCell className="capitalize">{producto.proveedor}</TableCell>
+                      <TableCell>
+                        {producto.seccion ? (
+                          <Badge variant="outline">{producto.seccion}</Badge>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {producto.anioInventario === anioActual ? (
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+                            {producto.anioInventario}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-red-100 text-red-600 border-red-300">
+                            {producto.anioInventario}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {producto.cantidad} {producto.unidades}
+                      </TableCell>
+                      <TableCell>
+                        {producto.embalaje || '-'}
+                      </TableCell>
+                      <TableCell className="font-medium">{producto.codigo}</TableCell>
+                      <TableCell className="uppercase font-mono">
+                        {producto.costo}
+                      </TableCell>
+                      {isAdmin && (
+                        <TableCell className="bg-blue-50 font-semibold text-blue-900">
+                          ${formatearCostoReal(producto.costoReal)}
+                        </TableCell>
+                      )}
+                      <TableCell>${producto.precioVenta}</TableCell>
+                      {isSuperAdmin && (
+                        <TableCell className="bg-purple-50">
+                          {producto.centroCosto ? (
+                            <Badge
+                              variant="outline"
+                              className={`${getCentroCostoColor(producto.centroCosto.nombre).bg} ${getCentroCostoColor(producto.centroCosto.nombre).text} ${getCentroCostoColor(producto.centroCosto.nombre).border}`}
+                            >
+                              <Building2 className="h-3 w-3 mr-1" />
+                              {producto.centroCosto.nombre}
+                            </Badge>
+                          ) : (
+                            <span className="text-gray-400 text-xs">Sin asignar</span>
+                          )}
+                        </TableCell>
+                      )}
+                      <TableCell className="bg-green-50 text-green-900 text-sm">
+                        {producto.creadoPor?.nombre || 'Sin info'}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
 
             {/* Paginación */}
             {paginacion.totalPages > 1 && (
@@ -505,7 +505,7 @@ export function ProductosTable({
                 <div className="text-sm text-gray-600">
                   Mostrando {indiceInicio + 1} a {indiceFin} de {paginacion.total} productos
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -520,7 +520,7 @@ export function ProductosTable({
                   <div className="flex gap-1">
                     {[...Array(paginacion.totalPages)].map((_, index) => {
                       const numeroPagina = index + 1;
-                      
+
                       // Mostrar solo algunas páginas en móvil
                       if (paginacion.totalPages > 7) {
                         if (
