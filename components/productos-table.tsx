@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Table,
   TableBody,
@@ -160,9 +160,20 @@ export function ProductosTable({
     filtros.centroCostoId !== 'todos' ||
     filtros.estado !== 'todos';
 
+  const topRef = useRef<HTMLDivElement>(null);
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+
   const irAPagina = (pagina: number) => {
     onPageChange(pagina);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // El contenedor interno de la tabla (columnas/encabezados congelados)
+    // tiene su propio scroll vertical, separado del scroll de la página.
+    // Si quedó desplazado hacia el último producto, hay que reiniciarlo
+    // también o la página nueva se ve "cortada" por abajo.
+    const innerContainer = tableWrapperRef.current?.querySelector<HTMLDivElement>(
+      '[data-slot="table-container"]'
+    );
+    if (innerContainer) innerContainer.scrollTop = 0;
   };
 
   // Estado totalmente vacío: no hay productos en el sistema y no hay filtros aplicados
@@ -185,7 +196,7 @@ export function ProductosTable({
   const indiceFin = indiceInicio + productos.length;
 
   return (
-    <Card>
+    <Card ref={topRef}>
       <CardHeader>
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -338,7 +349,10 @@ export function ProductosTable({
             No se encontraron productos con los filtros aplicados
           </p>
         ) : (
-          <div className={loading ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
+          <div
+            ref={tableWrapperRef}
+            className={loading ? 'opacity-50 transition-opacity' : 'transition-opacity'}
+          >
             {/* Mensaje informativo en móvil */}
             <div className="block lg:hidden mb-4 p-3 bg-blue-50 rounded-md text-xs text-blue-700">
               💡 Desliza horizontalmente para ver más columnas. La columna de Acciones se mantiene fija (y también Referencia desde tablet en adelante).
@@ -376,9 +390,15 @@ export function ProductosTable({
               <TableBody>
                 {productos.map((producto) => {
                   const pendiente = producto.anioInventario !== anioActual;
+                  // Las columnas fijas (Acciones/Referencia) quedan encima de
+                  // las columnas que se desplazan por debajo al hacer scroll
+                  // horizontal: si el hover usa un color con transparencia,
+                  // ese contenido desplazado se transparenta por debajo. Por
+                  // eso aquí el hover va siempre con color sólido (sin /50 ni
+                  // /70), a diferencia del resto de columnas no fijas.
                   const stickyColClass = pendiente
-                    ? 'bg-red-50 group-hover:bg-red-100/70'
-                    : 'bg-card group-hover:bg-muted/50';
+                    ? 'bg-red-50 group-hover:bg-red-100'
+                    : 'bg-card group-hover:bg-muted';
                   return (
                     <TableRow
                       key={producto.id}
@@ -391,7 +411,10 @@ export function ProductosTable({
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent
+                            align="end"
+                            onCloseAutoFocus={(e) => e.preventDefault()}
+                          >
                             <DropdownMenuItem onClick={() => onEdit(producto)}>
                               <Edit className="h-4 w-4 mr-2" />
                               Editar

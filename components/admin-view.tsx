@@ -83,6 +83,7 @@ export function AdminView() {
 
   const [productoToEdit, setProductoToEdit] = useState<Producto | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Producto | null>(null);
   const { user, logout, centrosCosto, centroCostoActivo, setCentroCostoActivo } = useAuth();
@@ -241,11 +242,18 @@ export function AdminView() {
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handleCancelEdit = () => setProductoToEdit(null);
+  const handleCancelEdit = () => {
+    setProductoToEdit(null);
+    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const handleSuccess = async () => {
+    const estabaEditando = !!productoToEdit;
     await Promise.all([fetchProductos(queryState), fetchEstadisticas(), fetchOpciones()]);
     setProductoToEdit(null);
+    if (estabaEditando) {
+      tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const handleExportar = async () => {
@@ -356,32 +364,30 @@ export function AdminView() {
         <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
           <InventoryStats estadisticas={estadisticas} loading={loadingStats} />
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 sm:gap-8">
-            <div ref={formRef} className="xl:col-span-1 order-2 xl:order-1">
-              <ProductoForm
-                onSuccess={handleSuccess}
-                productoToEdit={productoToEdit}
-                onCancelEdit={handleCancelEdit}
-                centroCostoId={centroCostoActivo?.id}
-                centroCostoNombre={centroCostoActivo?.nombre}
-              />
-            </div>
+          <div ref={tableRef}>
+            <ProductosTable
+              productos={productos}
+              onDelete={handleDelete}
+              onEdit={handleEdit}
+              onMarcarActualizado={handleMarcarActualizado}
+              loading={loadingProductos}
+              filtros={queryState}
+              onFiltrosChange={handleFiltrosChange}
+              onLimpiarFiltros={handleLimpiarFiltros}
+              opciones={opciones}
+              paginacion={paginacion}
+              onPageChange={handlePageChange}
+            />
+          </div>
 
-            <div className="xl:col-span-2 order-1 xl:order-2">
-              <ProductosTable
-                productos={productos}
-                onDelete={handleDelete}
-                onEdit={handleEdit}
-                onMarcarActualizado={handleMarcarActualizado}
-                loading={loadingProductos}
-                filtros={queryState}
-                onFiltrosChange={handleFiltrosChange}
-                onLimpiarFiltros={handleLimpiarFiltros}
-                opciones={opciones}
-                paginacion={paginacion}
-                onPageChange={handlePageChange}
-              />
-            </div>
+          <div ref={formRef} className="max-w-2xl mx-auto w-full">
+            <ProductoForm
+              onSuccess={handleSuccess}
+              productoToEdit={productoToEdit}
+              onCancelEdit={handleCancelEdit}
+              centroCostoId={centroCostoActivo?.id}
+              centroCostoNombre={centroCostoActivo?.nombre}
+            />
           </div>
         </div>
       </main>
