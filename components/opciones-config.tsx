@@ -34,7 +34,10 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
     const guardadas = localStorage.getItem(key);
     
     if (guardadas) {
-      setOpciones(JSON.parse(guardadas));
+      const lista: string[] = JSON.parse(guardadas);
+      // "HERRAJES ALEA" quedó retirado (fusionado con "HERRAJES"); se filtra
+      // aunque este navegador lo tenga guardado de una personalización previa.
+      setOpciones(tipo === 'secciones' ? lista.filter((s) => s.trim().toUpperCase() !== 'HERRAJES ALEA') : lista);
     } else {
       // Valores por defecto
       if (tipo === 'proveedores') {
@@ -42,7 +45,7 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
       } else if (tipo === 'unidades') {
         setOpciones(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'ROLLOS']);
       } else {
-        setOpciones(['HERRAJES ALEA', 'SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS', 'HERRAJES', 'NAVIDAD', 'MILLARES',
+        setOpciones(['SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS', 'HERRAJES', 'NAVIDAD', 'MILLARES',
           'ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES', 'ENCAJES', 'VARIOS', 'APLIQUES'
         ]);
       }

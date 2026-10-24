@@ -82,6 +82,13 @@ interface CatalogoResultado {
 // búsqueda siguen intactos, solo no se renderiza la sección en el formulario.
 const MOSTRAR_REIMPRIMIR_ETIQUETA = false;
 
+// Departamento retirado (fusionado con "HERRAJES"). Se filtra siempre, aunque
+// algún navegador todavía lo tenga guardado en su localStorage de una
+// personalización previa, para que nadie vuelva a verlo ni a seleccionarlo.
+const DEPARTAMENTO_RETIRADO = 'HERRAJES ALEA';
+const sinDepartamentoRetirado = (lista: string[]) =>
+  lista.filter((s) => s.trim().toUpperCase() !== DEPARTAMENTO_RETIRADO);
+
 export function ProductoForm({
   onSuccess,
   productoToEdit,
@@ -102,7 +109,7 @@ export function ProductoForm({
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | 'secciones' | null>(null);
   const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
   const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
-  const [secciones, setSecciones] = useState<string[]>(['HERRAJES ALEA', 'SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS',
+  const [secciones, setSecciones] = useState<string[]>(['SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS',
         'HERRAJES', 'NAVIDAD', 'MILLARES','ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES',
         'ENCAJES', 'VARIOS', 'APLIQUES']);
   const isEditing = !!productoToEdit;
@@ -175,7 +182,7 @@ export function ProductoForm({
       setUnidades(JSON.parse(customUnidades));
     }
     if (customSecciones) {
-      setSecciones(JSON.parse(customSecciones));
+      setSecciones(sinDepartamentoRetirado(JSON.parse(customSecciones)));
     }
   }, [configModal]);
 
@@ -201,7 +208,7 @@ export function ProductoForm({
       // seleccionado correctamente.
       setProveedores((prev) => (prev.includes(productoToEdit.proveedor) ? prev : [...prev, productoToEdit.proveedor]));
       setUnidades((prev) => (prev.includes(productoToEdit.unidades) ? prev : [...prev, productoToEdit.unidades]));
-      if (productoToEdit.seccion) {
+      if (productoToEdit.seccion && productoToEdit.seccion.trim().toUpperCase() !== DEPARTAMENTO_RETIRADO) {
         setSecciones((prev) => (prev.includes(productoToEdit.seccion!) ? prev : [...prev, productoToEdit.seccion!]));
       }
     } else {
@@ -264,7 +271,7 @@ export function ProductoForm({
     // pueda mostrar en vez de quedar en blanco.
     setProveedores((prev) => (prev.includes(item.proveedor) ? prev : [...prev, item.proveedor]));
     setUnidades((prev) => (prev.includes(item.unidades) ? prev : [...prev, item.unidades]));
-    if (item.seccion) {
+    if (item.seccion && item.seccion.trim().toUpperCase() !== DEPARTAMENTO_RETIRADO) {
       setSecciones((prev) => (prev.includes(item.seccion!) ? prev : [...prev, item.seccion!]));
     }
 
@@ -1047,34 +1054,23 @@ export function ProductoForm({
                   {/* Sección */}
                   <div className="space-y-2">
                     <Label htmlFor="seccion">Departamento *</Label>
-                    <div className="flex gap-2">
-                      <Select
-                        value={watch('seccion') || ''}
-                        onValueChange={(value) => setValue('seccion', value)}
-                      >
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Selecciona un departamento">
-                            {watch('seccion') || undefined}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {secciones.map((sec) => (
-                            <SelectItem key={sec} value={sec}>
-                              {sec}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setConfigModal('secciones')}
-                        title="Gestionar departamentos"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <Select
+                      value={watch('seccion') || ''}
+                      onValueChange={(value) => setValue('seccion', value)}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Selecciona un departamento">
+                          {watch('seccion') || undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {secciones.map((sec) => (
+                          <SelectItem key={sec} value={sec}>
+                            {sec}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {errors.seccion && (
                       <p className="text-sm text-red-500">{errors.seccion.message}</p>
                     )}
@@ -1182,9 +1178,21 @@ export function ProductoForm({
                       </Button>
                     )}
                     {isEditing && (
-                      <Button 
-                        type="button" 
-                        variant="outline" 
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={isSubmitting}
+                        onClick={handleSubmit((data) => onSubmit(data, true))}
+                        className="flex-1 w-full"
+                      >
+                        <Printer className="h-4 w-4 mr-2" />
+                        {isSubmitting ? 'Actualizando...' : 'Actualizar e Imprimir'}
+                      </Button>
+                    )}
+                    {isEditing && (
+                      <Button
+                        type="button"
+                        variant="outline"
                         onClick={onCancelEdit}
                         disabled={isSubmitting}
                         className="w-full sm:w-auto"
