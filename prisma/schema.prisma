@@ -22,6 +22,11 @@ model CentroCosto {
   // (además de su centro principal, o en vez de él si son multi-centro)
   usuariosAdicionales UsuarioCentroCosto[]
 
+  // NUEVO: proveedores/unidades personalizados propios de este centro (ver
+  // OpcionCatalogo más abajo). Los departamentos/secciones NO viven aquí -
+  // esos son globales, iguales para todos los centros.
+  opcionesCatalogo OpcionCatalogo[]
+
   @@index([nombre])
   @@index([activo])
 }
@@ -105,6 +110,33 @@ model Producto {
   @@index([anioInventario])
   @@index([centroCostoId, anioInventario]) // La combinación que más se consulta
 }
+// Catálogo de opciones personalizadas para los desplegables del formulario
+// de productos (proveedor, unidades, departamento/sección). Antes vivían en
+// localStorage - una copia distinta por navegador, sin compartir entre
+// usuarios.
+//
+// - 'proveedores' y 'unidades': propios de CADA centro de costo (un centro
+//   no ve ni puede tocar los del otro) - centroCostoId obligatorio.
+// - 'secciones' (departamentos): catálogo GLOBAL, igual para todos los
+//   centros - centroCostoId siempre NULL.
+//
+// La regla de "no repetido" (un mismo valor no se repite dos veces para el
+// mismo tipo+centro, o dos veces en el catálogo global de secciones) se
+// hace cumplir con dos índices únicos PARCIALES creados a mano en la
+// migración (Prisma no soporta índices únicos condicionales en el schema),
+// por eso no hay un @@unique declarado aquí - ver el archivo migration.sql
+// correspondiente para el detalle.
+model OpcionCatalogo {
+  id            String       @id @default(cuid())
+  tipo          String       // 'proveedores' | 'unidades' | 'secciones'
+  valor         String
+  centroCostoId String?
+  centroCosto   CentroCosto? @relation(fields: [centroCostoId], references: [id], onDelete: Cascade)
+  createdAt     DateTime     @default(now())
+
+  @@index([tipo, centroCostoId])
+}
+
 // NUEVO modelo - tabla puente para la relación muchos-a-muchos entre
 // Usuario y CentroCosto. No modifica ninguna tabla existente; es
 // puramente aditiva (CREATE TABLE en la migración).

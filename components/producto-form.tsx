@@ -89,6 +89,17 @@ const DEPARTAMENTO_RETIRADO = 'HERRAJES ALEA';
 const sinDepartamentoRetirado = (lista: string[]) =>
   lista.filter((s) => s.trim().toUpperCase() !== DEPARTAMENTO_RETIRADO);
 
+// Garantiza que el valor actual del campo (al editar un producto, al
+// clonarlo desde el catálogo de otra agencia, o mientras el catálogo del
+// centro todavía está cargando) aparezca en el desplegable aunque todavía
+// no esté en la lista que llegó del servidor - así el campo nunca se ve
+// vacío aunque el dato sí esté guardado. Es solo para esta lectura (no
+// modifica el catálogo real), por eso se calcula al renderizar en vez de
+// guardarse en el estado - evita el problema de que un fetch que llega
+// tarde pise con un setState lo que ya se había agregado.
+const conValorAsegurado = (lista: string[], valor?: string | null) =>
+  valor && !lista.includes(valor) ? [...lista, valor] : lista;
+
 export function ProductoForm({
   onSuccess,
   productoToEdit,
@@ -106,9 +117,25 @@ export function ProductoForm({
   // NUEVO: nombre del centro activo, priorizando el prop explícito
   // (multi-centro) sobre el centro único del contexto de auth.
   const nombreCentroActivo = centroCostoNombre ?? centroCosto?.nombre;
+  // Mismo criterio para el id: lo usan proveedores/unidades, que ahora son
+  // un catálogo propio de cada centro (ver useEffect de cargarOpciones). Al
+  // editar, el centro que importa es el del PROPIO producto (su
+  // centroCosto) - puede no coincidir con el prop explícito ni con el
+  // centro único del usuario (p. ej. un superadmin, que no tiene centro
+  // propio, o un asesor multi-centro editando un producto de otra agencia
+  // distinta a la que tiene activa ahora mismo). Las vistas que abren el
+  // modal de editar no siempre pasan centroCostoId/centroCostoNombre -ver
+  // asesor-view.tsx y sucursal-inventario.tsx-, así que sin esto el
+  // catálogo se pedía para el centro equivocado (o no se pedía).
+  const centroActivoId = productoToEdit?.centroCosto?.id ?? centroCostoId ?? centroCosto?.id;
   const [configModal, setConfigModal] = useState<'proveedores' | 'unidades' | 'secciones' | null>(null);
-  const [proveedores, setProveedores] = useState<string[]>(['BODEGA', 'ALEA']);
-  const [unidades, setUnidades] = useState<string[]>(['METROS', 'YARDAS', 'GRAMOS', 'UNIDAD']);
+  // Proveedores y unidades ya no tienen un valor "por defecto" razonable
+  // acá: son propios de cada centro, y mostrar BODEGA/ALEA mientras carga
+  // sería engañoso para un centro que nunca los ha usado. Arrancan vacíos y
+  // se llenan con lo que de verdad tiene ese centro, igual que el resto de
+  // desplegables de la app que dependen del centro activo.
+  const [proveedores, setProveedores] = useState<string[]>([]);
+  const [unidades, setUnidades] = useState<string[]>([]);
   const [secciones, setSecciones] = useState<string[]>(['SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS',
         'HERRAJES', 'NAVIDAD', 'MILLARES','ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES',
         'ENCAJES', 'VARIOS', 'APLIQUES']);
@@ -169,22 +196,48 @@ export function ProductoForm({
     return () => marcarCambiosSinGuardar(formId, false);
   }, [formId, isDirty]);
 
-  // Cargar opciones personalizadas
+  // Cargar el catálogo de opciones personalizadas (proveedor, unidades,
+  // departamento) - antes vivía en localStorage, una copia distinta por
+  // navegador; ahora es compartido vía GET /api/opciones. 'secciones' es
+  // global; 'proveedores'/'unidades' son propios del centro activo, por eso
+  // esta petición necesita centroActivoId y se repite si ese centro cambia
+  // (p. ej. al cambiar de agencia en el menú hamburguesa). Una sola
+  // petición trae los 3 catálogos juntos.
   useEffect(() => {
-    const customProveedores = localStorage.getItem('custom_proveedores');
-    const customUnidades = localStorage.getItem('custom_unidades');
-    const customSecciones = localStorage.getItem('custom_secciones');
+    if (!centroActivoId) return;
+    let cancelado = false;
 
-    if (customProveedores) {
-      setProveedores(JSON.parse(customProveedores));
-    }
-    if (customUnidades) {
-      setUnidades(JSON.parse(customUnidades));
-    }
-    if (customSecciones) {
-      setSecciones(sinDepartamentoRetirado(JSON.parse(customSecciones)));
-    }
-  }, [configModal]);
+    const cargarOpciones = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/opciones?centroCostoId=${encodeURIComponent(centroActivoId)}`, {
+          headers: { Authorization: token ? `Bearer ${token}` : '' },
+        });
+
+        if (response.status === 401) {
+          logout();
+          return;
+        }
+        if (!response.ok || cancelado) return;
+
+        const data = await response.json();
+        setProveedores(data.proveedores);
+        setUnidades(data.unidades);
+        setSecciones(sinDepartamentoRetirado(data.secciones));
+      } catch (error) {
+        console.error('Error al cargar opciones del catálogo:', error);
+      }
+    };
+
+    cargarOpciones();
+    return () => {
+      cancelado = true;
+    };
+    // logout() no cambia de identidad de forma relevante para esto, y
+    // dejarlo en las dependencias dispararía un fetch de más cada vez que
+    // cambia el contexto de auth sin que el centro activo haya cambiado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centroActivoId]);
 
   // Cargar datos cuando se va a editar
   useEffect(() => {
@@ -200,17 +253,11 @@ export function ProductoForm({
       setValue('codigo', productoToEdit.codigo);
       setValue('embalaje', productoToEdit.embalaje || '');
 
-      // Mismo caso que en seleccionarDeCatalogo: si el proveedor/unidad/
-      // departamento de este producto no está en las listas desplegables
-      // de este navegador (p. ej. productos importados por Excel, nunca
-      // escritos a mano en este formulario), el Select queda en blanco
-      // aunque el dato sí esté guardado - se agrega para que se vea
-      // seleccionado correctamente.
-      setProveedores((prev) => (prev.includes(productoToEdit.proveedor) ? prev : [...prev, productoToEdit.proveedor]));
-      setUnidades((prev) => (prev.includes(productoToEdit.unidades) ? prev : [...prev, productoToEdit.unidades]));
-      if (productoToEdit.seccion && productoToEdit.seccion.trim().toUpperCase() !== DEPARTAMENTO_RETIRADO) {
-        setSecciones((prev) => (prev.includes(productoToEdit.seccion!) ? prev : [...prev, productoToEdit.seccion!]));
-      }
+      // Si el proveedor/unidad/departamento de este producto no está en el
+      // catálogo cargado (p. ej. productos importados por Excel, o el
+      // catálogo del centro todavía no terminó de cargar), el Select lo
+      // sigue mostrando igual gracias a conValorAsegurado() en el render -
+      // no hace falta parchear el estado del catálogo acá.
     } else {
       reset();
       setAvisoYaExisteEnMiAgencia(null);
@@ -265,16 +312,9 @@ export function ProductoForm({
     setValue('codigo', item.codigo);
     setValue('embalaje', item.embalaje || '');
 
-    // Si el proveedor/unidad/sección de la otra agencia no está en las
-    // listas desplegables de este navegador (son personalizadas por
-    // dispositivo, vía localStorage), lo agregamos para que el Select lo
-    // pueda mostrar en vez de quedar en blanco.
-    setProveedores((prev) => (prev.includes(item.proveedor) ? prev : [...prev, item.proveedor]));
-    setUnidades((prev) => (prev.includes(item.unidades) ? prev : [...prev, item.unidades]));
-    if (item.seccion && item.seccion.trim().toUpperCase() !== DEPARTAMENTO_RETIRADO) {
-      setSecciones((prev) => (prev.includes(item.seccion!) ? prev : [...prev, item.seccion!]));
-    }
-
+    // Si el proveedor/unidad/sección de la otra agencia no está en el
+    // catálogo de este centro, el Select lo sigue mostrando igual gracias a
+    // conValorAsegurado() en el render.
     setSearchCatalogo('');
     setMostrarResultadosCatalogo(false);
 
@@ -548,6 +588,29 @@ export function ProductoForm({
     }
 
     const productoGuardado = await response.json();
+
+    // Si el departamento de este producto no está en el catálogo global
+    // (p. ej. venía de una importación vieja, de antes de que existiera
+    // este catálogo), se agrega automáticamente al actualizar - así deja
+    // de ser un caso aislado y queda disponible para todos los centros
+    // desde ahora. Solo al EDITAR (nunca al crear, que ya obliga a elegir
+    // uno de la lista) y solo si de verdad hace falta. Best-effort: si
+    // falla (p. ej. otro usuario lo agregó al mismo tiempo), no interrumpe
+    // el guardado del producto, que ya se completó con éxito.
+    if (isEditing && productoGuardado.seccion && !secciones.includes(productoGuardado.seccion)) {
+      try {
+        const respOpcion = await fetch('/api/opciones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+          body: JSON.stringify({ tipo: 'secciones', valor: productoGuardado.seccion }),
+        });
+        if (respOpcion.ok) {
+          setSecciones((prev) => (prev.includes(productoGuardado.seccion) ? prev : [...prev, productoGuardado.seccion]));
+        }
+      } catch (error) {
+        console.error('Error al agregar departamento al catálogo:', error);
+      }
+    }
 
     reset();
     onSuccess(productoGuardado, isEditing);
@@ -935,7 +998,18 @@ export function ProductoForm({
                     <div className="flex gap-2">
                       <Select
                         value={watch('proveedor') || ''}
-                        onValueChange={(value) => setValue('proveedor', value)}
+                        // El guard `value &&` ignora notificaciones con valor
+                        // vacío: Radix Select sincroniza un <select> nativo
+                        // oculto (para autocompletado/accesibilidad) y, si sus
+                        // opciones todavía no estaban listas en el momento en
+                        // que se fijó el valor (p. ej. al editar un producto,
+                        // justo después de setValue), el navegador puede
+                        // "corregir" ese <select> a vacío y Radix reenvía eso
+                        // como un onValueChange('') espontáneo - sin que el
+                        // usuario haya tocado nada - borrando el campo. Como
+                        // este campo es obligatorio, una selección real nunca
+                        // es un string vacío, así que ignorarla es seguro.
+                        onValueChange={(value) => value && setValue('proveedor', value)}
                       >
                         <SelectTrigger className="flex-1">
                           <SelectValue placeholder="Selecciona un proveedor">
@@ -943,7 +1017,7 @@ export function ProductoForm({
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {proveedores.map((prov) => (
+                          {conValorAsegurado(proveedores, watch('proveedor')).map((prov) => (
                             <SelectItem key={prov} value={prov}>
                               {prov}
                             </SelectItem>
@@ -1021,7 +1095,9 @@ export function ProductoForm({
                     <div className="flex gap-2">
                       <Select
                         value={watch('unidades') || ''}
-                        onValueChange={(value) => setValue('unidades', value)}
+                        // Ver comentario en el Select de Proveedor: ignora
+                        // notificaciones con valor vacío de Radix.
+                        onValueChange={(value) => value && setValue('unidades', value)}
                       >
                         <SelectTrigger className="flex-1">
                           <SelectValue placeholder="Selecciona unidad">
@@ -1029,7 +1105,7 @@ export function ProductoForm({
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {unidades.map((unidad) => (
+                          {conValorAsegurado(unidades, watch('unidades')).map((unidad) => (
                             <SelectItem key={unidad} value={unidad}>
                               {unidad}
                             </SelectItem>
@@ -1056,7 +1132,9 @@ export function ProductoForm({
                     <Label htmlFor="seccion">Departamento *</Label>
                     <Select
                       value={watch('seccion') || ''}
-                      onValueChange={(value) => setValue('seccion', value)}
+                      // Ver comentario en el Select de Proveedor: ignora
+                      // notificaciones con valor vacío de Radix.
+                      onValueChange={(value) => value && setValue('seccion', value)}
                     >
                       <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Selecciona un departamento">
@@ -1064,7 +1142,7 @@ export function ProductoForm({
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {secciones.map((sec) => (
+                        {conValorAsegurado(secciones, watch('seccion')).map((sec) => (
                           <SelectItem key={sec} value={sec}>
                             {sec}
                           </SelectItem>
@@ -1214,6 +1292,11 @@ export function ProductoForm({
           isOpen={true}
           onClose={() => setConfigModal(null)}
           tipo={configModal}
+          centroCostoId={centroActivoId}
+          opciones={configModal === 'proveedores' ? proveedores : configModal === 'unidades' ? unidades : secciones}
+          onOpcionesChange={
+            configModal === 'proveedores' ? setProveedores : configModal === 'unidades' ? setUnidades : setSecciones
+          }
         />
       )}
 
