@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { desencriptarCosto } from '@/lib/encryption';
 import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
 import { verifyToken } from '@/lib/jwt';
-import { obtenerCentrosDeUsuario } from '@/lib/user-centros';
+import { derivarCentrosDeUsuario } from '@/lib/user-centros';
 
 // GET - Listar productos filtrados por centro de costo, con paginación, filtros y búsqueda
 export async function GET(request: Request) {
@@ -28,7 +28,10 @@ export async function GET(request: Request) {
 
     const usuario = await prisma.usuario.findUnique({
       where: { id: payload.userId },
-      include: { centroCosto: true }
+      include: {
+        centroCosto: true,
+        centrosCostoAdicionales: { include: { centroCosto: true } },
+      }
     });
 
     if (!usuario) {
@@ -66,7 +69,7 @@ export async function GET(request: Request) {
       // Si no viene ninguno, se filtra por TODOS sus centros asignados -
       // para un usuario de un solo centro esto equivale exactamente al
       // comportamiento de siempre (whereClause.centroCostoId = su único id).
-      const centrosAsignados = await obtenerCentrosDeUsuario(usuario.id);
+      const centrosAsignados = derivarCentrosDeUsuario(usuario);
 
       if (centrosAsignados.length === 0) {
         return NextResponse.json(
@@ -220,7 +223,10 @@ export async function POST(request: Request) {
     const [usuario, codigoBarras] = await Promise.all([
       prisma.usuario.findUnique({
         where: { id: userId },
-        include: { centroCosto: true }
+        include: {
+          centroCosto: true,
+          centrosCostoAdicionales: { include: { centroCosto: true } },
+        }
       }),
       generarCodigoBarrasUnico(body.codigo, body.costo, prisma),
     ]);
@@ -241,7 +247,7 @@ export async function POST(request: Request) {
     let centroCostoIdAsignado: string | null = usuario.centroCostoId;
 
     if (usuario.rol !== 'superadmin') {
-      const centrosAsignados = await obtenerCentrosDeUsuario(usuario.id);
+      const centrosAsignados = derivarCentrosDeUsuario(usuario);
 
       if (centrosAsignados.length === 0) {
         return NextResponse.json(

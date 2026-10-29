@@ -62,8 +62,9 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
   const isScanningRef = useRef(false);
 
   // Cuenta cada frame fallido sin tocar React (html5-qrcode llama a
-  // onScanFailure hasta ~20 veces por segundo mientras no hay código en
-  // cuadro, que es el caso normal casi todo el tiempo).
+  // onScanFailure hasta ~10 veces por segundo -ver fps en initCamera()-
+  // mientras no hay código en cuadro, que es el caso normal casi todo el
+  // tiempo).
   const scanAttemptsRef = useRef(0);
 
   // Evita procesar el mismo código dos veces si llegan frames de más
@@ -113,7 +114,7 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
 
   const initCamera = async () => {
     if (isInitializing.current) return;
-    
+
     try {
       isInitializing.current = true;
       setError('');
@@ -126,54 +127,35 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
         return;
       }
 
-      // Crear instancia con formatos específicos para códigos de barras
+      // Todas las etiquetas que genera e imprime el sistema usan CODE_128
+      // (ver components/barcode-display.tsx, <Barcode format="CODE128">).
+      // Antes se pedían también CODE_39/EAN/UPC "por si acaso", pero eso
+      // obliga al decodificador a probar varias simbologías en cada frame
+      // (más lento en celulares de gama baja) y puede producir una lectura
+      // cruzada incorrecta cuando el código está parcialmente tapado o
+      // borroso. Al dejar un solo formato, cada frame se procesa más rápido
+      // y solo se aceptan lecturas del formato que realmente usamos.
       const html5Qrcode = new Html5Qrcode('reader', {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-        ],
+        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
+        useBarCodeDetectorIfSupported: true, // usa el decodificador nativo del celular cuando está disponible (más rápido y preciso que el decodificador en JS)
         verbose: false,
       });
 
-      // Obtener cámaras disponibles
-      let cameras;
-      try {
-        cameras = await Html5Qrcode.getCameras();
-      } catch (err) {
-        console.error('Error obteniendo cámaras:', err);
-        setError('No se puede acceder a la cámara. Verifica los permisos.');
-        isInitializing.current = false;
-        return;
-      }
+      console.log('📷 Iniciando cámara trasera...');
 
-      if (!cameras || cameras.length === 0) {
-        setError('No se encontraron cámaras en tu dispositivo');
-        isInitializing.current = false;
-        return;
-      }
-
-      // Seleccionar cámara trasera
-      const backCamera = cameras.find(camera => {
-        const label = camera.label.toLowerCase();
-        return label.includes('back') || 
-               label.includes('rear') || 
-               label.includes('trasera') ||
-               label.includes('environment');
-      });
-
-      const cameraId = backCamera ? backCamera.id : cameras[cameras.length - 1].id;
-
-      console.log('📷 Iniciando cámara:', backCamera?.label || cameras[cameras.length - 1].label);
-
-      // Configuración optimizada para códigos de barras
+      // Antes se enumeraban las cámaras (Html5Qrcode.getCameras()) y se
+      // elegía la "trasera" buscando palabras como "back"/"rear"/"trasera"
+      // en camera.label. Ese texto depende del navegador, del idioma del
+      // sistema y de si ya se otorgó permiso antes - en varios celulares
+      // viene vacío o sin ninguna de esas palabras, así que terminaba
+      // eligiendo la cámara equivocada (frontal) silenciosamente. Pedir
+      // facingMode "environment" deja que el propio navegador/SO identifique
+      // la cámara trasera real, que es la forma recomendada por la librería
+      // y no depende de texto adivinado.
       await html5Qrcode.start(
-        cameraId,
+        { facingMode: 'environment' },
         {
-          fps: 20, // Reducido para mejor estabilidad
+          fps: 10, // valor recomendado por la librería para codigos de barras: a 20 el decodificador no alcanza a procesar todos los frames en celulares de gama media/baja y la imagen queda más borrosa
           qrbox: function(viewfinderWidth, viewfinderHeight) {
             // Área rectangular horizontal para códigos de barras
             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
@@ -184,8 +166,17 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
               height: qrboxHeight
             };
           },
-          aspectRatio: 1.777778, // 16:9
+          aspectRatio: 1.777778, // 16:9 - solo afecta el recuadro de video, no la resolución pedida a la cámara (eso lo controla videoConstraints abajo)
           disableFlip: false,
+          // "ideal" (no "exact"): le pide al navegador la cámara trasera y
+          // la mejor resolución posible, pero si el dispositivo no puede
+          // cumplirlo exactamente (p. ej. una laptop con una sola cámara),
+          // sigue funcionando con lo que haya en vez de fallar por completo.
+          videoConstraints: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
         },
         onScanSuccess,
         onScanFailure
@@ -199,18 +190,28 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
       console.log('✅ Cámara iniciada correctamente');
     } catch (err: any) {
       console.error('Error iniciando cámara:', err);
-      
+
+      // html5-qrcode envuelve el error de getUserMedia como texto plano
+      // ("Error getting userMedia, error = NotAllowedError: ...") en vez de
+      // conservarlo como objeto con `.name` - por eso se busca el nombre
+      // del error dentro del texto en lugar de leer err.name directamente
+      // (leer err.name aquí nunca iba a coincidir con nada, salvo cuando el
+      // error venía de otra parte del código).
+      const detalle = typeof err === 'string' ? err : (err?.message || String(err ?? ''));
+
       let errorMsg = 'Error al iniciar la cámara';
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      if (/NotAllowedError|PermissionDeniedError/i.test(detalle)) {
         errorMsg = 'Permiso de cámara denegado. Por favor, permite el acceso.';
-      } else if (err.name === 'NotFoundError') {
-        errorMsg = 'No se encontró ninguna cámara';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      } else if (/NotFoundError/i.test(detalle)) {
+        errorMsg = 'No se encontró ninguna cámara en tu dispositivo';
+      } else if (/NotReadableError|TrackStartError/i.test(detalle)) {
         errorMsg = 'La cámara está siendo usada por otra aplicación';
-      } else if (err.message) {
-        errorMsg = `Error: ${err.message}`;
+      } else if (/OverconstrainedError/i.test(detalle)) {
+        errorMsg = 'No se pudo configurar la cámara de este dispositivo';
+      } else if (detalle) {
+        errorMsg = `Error: ${detalle}`;
       }
-      
+
       setError(errorMsg);
       isInitializing.current = false;
     }
@@ -250,7 +251,7 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
   };
 
   const onScanFailure = (_error: string) => {
-    // Este callback se dispara hasta ~20 veces por segundo (una por cada
+    // Este callback se dispara hasta ~10 veces por segundo (una por cada
     // frame sin código detectado, que es el caso normal casi todo el
     // tiempo). Contamos en una ref para no disparar un re-render de React
     // en cada frame, y solo sincronizamos al estado visible cada 25
@@ -265,13 +266,25 @@ export function BarcodeScanner({ isOpen, onClose, onProductFound }: BarcodeScann
   const buscarProducto = async (codigo: string) => {
     try {
       console.log('🔍 Buscando producto:', codigo);
-      
-      const response = await fetch(`/api/productos/buscar?codigoBarras=${encodeURIComponent(codigo)}`);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/productos/buscar?codigoBarras=${encodeURIComponent(codigo)}`, {
+        headers: { Authorization: token ? `Bearer ${token}` : '' },
+      });
+
+      if (response.status === 401) {
+        // Sesión vencida: a diferencia de "producto no encontrado", acá no
+        // tiene sentido reintentar solo en 2s - el token sigue inválido y
+        // va a fallar exactamente igual. Se deja el error fijo para que el
+        // usuario inicie sesión de nuevo.
+        setError('Tu sesión expiró. Cierra este diálogo e inicia sesión de nuevo para poder escanear.');
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.error || 'Producto no encontrado con ese código');
-        
+
         // Reintentar escaneo después de 2 segundos (cancelable si el
         // usuario cierra el modal antes de que se dispare)
         clearPendingRetry();

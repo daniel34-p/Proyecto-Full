@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyToken } from '@/lib/jwt';
-import { obtenerCentrosDeUsuario } from '@/lib/user-centros';
+import { derivarCentrosDeUsuario } from '@/lib/user-centros';
 
 // GET - Estadísticas de inventario (total de productos y valor, agrupado por
 // proveedor y también por departamento/sección).
@@ -28,7 +28,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
     }
 
-    const usuario = await prisma.usuario.findUnique({ where: { id: payload.userId } });
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: payload.userId },
+      include: {
+        centroCosto: true,
+        centrosCostoAdicionales: { include: { centroCosto: true } },
+      },
+    });
     if (!usuario) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }
@@ -44,7 +50,7 @@ export async function GET(request: Request) {
         whereClause.centroCostoId = centroCostoIdParam;
       }
     } else {
-      const centrosAsignados = await obtenerCentrosDeUsuario(usuario.id);
+      const centrosAsignados = derivarCentrosDeUsuario(usuario);
 
       if (centrosAsignados.length === 0) {
         return NextResponse.json(

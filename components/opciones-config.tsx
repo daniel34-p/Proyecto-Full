@@ -46,7 +46,8 @@ export function OpcionesConfig({ isOpen, onClose, tipo }: OpcionesConfigProps) {
         setOpciones(['METROS', 'YARDAS', 'GRAMOS', 'UNIDADES', 'ROLLOS']);
       } else {
         setOpciones(['SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS', 'HERRAJES', 'NAVIDAD', 'MILLARES',
-          'ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES', 'ENCAJES', 'VARIOS', 'APLIQUES'
+          'ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES', 'ENCAJES', 'VARIOS', 'APLIQUES',
+          'PLANTILLAS', 'FORROS', 'CAPELLADAS','PEGANTES'
         ]);
       }
     }
