@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X, Building2, Loader2, Power, PowerOff } from 'lucide-react';
+import { MoreVertical, Edit, Printer, Trash2, ChevronLeft, ChevronRight, X, Building2, Loader2, Power, PowerOff, CheckCircle2, XCircle, ListRestart } from 'lucide-react';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
@@ -39,6 +39,7 @@ interface Producto {
   referencia: string;
   producto: string;
   cantidad: number;
+  cantidadDanada: number;
   unidades: string;
   seccion?: string;
   costo: string;
@@ -95,6 +96,10 @@ interface ProductosTableProps {
   onDelete: (id: string) => void;
   onEdit: (producto: Producto) => void;
   onMarcarActualizado: (id: string, actualizar: boolean) => void;
+  // Acción masiva (opcional - no todas las pantallas la ofrecen, p.ej. la
+  // vista de asesor no la recibe): marca como pendientes todos los
+  // productos con cantidad 0 del centro de costo que esté en pantalla.
+  onMarcarPendientesMasivo?: () => void | Promise<void>;
   loading: boolean;
   filtros: Filtros;
   onFiltrosChange: (filtros: Partial<Filtros>) => void;
@@ -109,6 +114,7 @@ export function ProductosTable({
   onDelete,
   onEdit,
   onMarcarActualizado,
+  onMarcarPendientesMasivo,
   loading,
   filtros,
   onFiltrosChange,
@@ -119,6 +125,17 @@ export function ProductosTable({
 }: ProductosTableProps) {
   const { isAdmin, isSuperAdmin } = useAuth();
   const anioActual = new Date().getFullYear();
+  const [marcandoPendientes, setMarcandoPendientes] = useState(false);
+
+  const handleClickMarcarPendientesMasivo = async () => {
+    if (!onMarcarPendientesMasivo || marcandoPendientes) return;
+    setMarcandoPendientes(true);
+    try {
+      await onMarcarPendientesMasivo();
+    } finally {
+      setMarcandoPendientes(false);
+    }
+  };
   const [barcodeModal, setBarcodeModal] = useState<{
     isOpen: boolean;
     codigo: string;
@@ -323,23 +340,40 @@ export function ProductosTable({
               )}
             </div>
 
-            {/* Botón limpiar filtros */}
-            {hayFiltrosActivos && (
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSearchInput('');
-                    onLimpiarFiltros();
-                  }}
-                  className="text-xs"
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  Limpiar filtros
-                </Button>
+            {/* Acción masiva de conteo físico + botón limpiar filtros */}
+            {((isAdmin || isSuperAdmin) && onMarcarPendientesMasivo) || hayFiltrosActivos ? (
+              <div className="flex justify-between items-center gap-2">
+                <div>
+                  {(isAdmin || isSuperAdmin) && onMarcarPendientesMasivo && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClickMarcarPendientesMasivo}
+                      disabled={marcandoPendientes}
+                      className="text-xs text-gray-600"
+                      title="Deja en rojo (pendiente) todos los productos con cantidad en 0, para empezar el conteo físico con un punto de partida claro"
+                    >
+                      <ListRestart className="h-3 w-3 mr-1" />
+                      {marcandoPendientes ? 'Marcando...' : 'Iniciar Conteo Fisico'}
+                    </Button>
+                  )}
+                </div>
+                {hayFiltrosActivos && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSearchInput('');
+                      onLimpiarFiltros();
+                    }}
+                    className="text-xs"
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Limpiar filtros
+                  </Button>
+                )}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </CardHeader>
@@ -368,6 +402,8 @@ export function ProductosTable({
                   <TableHead className="sticky top-0 z-20 bg-card">Departamento</TableHead>
                   <TableHead className="sticky top-0 z-20 bg-card">Estado</TableHead>
                   <TableHead className="sticky top-0 z-20 bg-card">Cantidad</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Buen Estado</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Mal Estado</TableHead>
                   <TableHead className="sticky top-0 z-20 bg-card">Embalaje</TableHead>
                   <TableHead className="sticky top-0 z-20 bg-card">Código</TableHead>
                   <TableHead className="sticky top-0 z-20 bg-card">Costo</TableHead>
@@ -484,6 +520,27 @@ export function ProductosTable({
                       </TableCell>
                       <TableCell>
                         {producto.cantidad} {producto.unidades}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const buena = Math.max(0, producto.cantidad - (producto.cantidadDanada || 0));
+                          return buena > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-green-700">
+                              <CheckCircle2 className="h-4 w-4" /> {buena}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell>
+                        {producto.cantidadDanada > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-red-600">
+                            <XCircle className="h-4 w-4" /> {producto.cantidadDanada}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {producto.embalaje || '-'}

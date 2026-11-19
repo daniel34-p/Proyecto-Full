@@ -4,6 +4,12 @@ import { desencriptarCosto } from '@/lib/encryption';
 import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
 import { verifyToken } from '@/lib/jwt';
 import { usuarioTieneAccesoACentro } from '@/lib/user-centros';
+import {
+  esPrecioMenorQueCosto,
+  registrarAlertaPrecioMenorCosto,
+  resolverAlertasPrecioMenorCosto,
+} from '@/lib/historial-alertas';
+import { registrarMovimientoCosto } from '@/lib/movimientos-inventario';
 
 // GET - Obtener un producto por ID (con validación de centro de costo)
 export async function GET(
@@ -156,14 +162,54 @@ export async function PUT(
     }
 
     const costoReal = desencriptarCosto(body.costo);
+    const precioVentaNum = parseFloat(body.precioVenta);
 
     const cantidad = parseFloat(body.cantidad);
+
+    // Del conteo físico: si no viene en el body (p. ej. el flujo de
+    // "agregar cantidad", que no conoce este campo), se conserva el valor
+    // que ya tenía - nunca se borra por omisión. Si viene, se acota entre 0
+    // y la cantidad total en vez de rechazar el guardado por esto.
+    const cantidadDanadaNum =
+      body.cantidadDanada !== undefined
+        ? Math.min(Math.max(0, parseFloat(body.cantidadDanada) || 0), cantidad)
+        : productoActual.cantidadDanada;
 
     const anioActual = new Date().getFullYear();
     const cantidadCambio = !isNaN(cantidad) && cantidad !== productoActual.cantidad;
 
     const costoCambio = !!body.costo && body.costo.trim().toUpperCase() !== productoActual.costo;
+    const precioVentaCambio = body.precioVenta !== undefined && body.precioVenta !== productoActual.precioVenta;
     const codigoCambio = body.codigo !== undefined && body.codigo !== productoActual.codigo;
+
+    // El chequeo de precio/costo solo se hace cuando de verdad se está
+    // tocando el costo o el precio en esta edición - así no bloquea (ni
+    // vuelve a registrar) ediciones que no los tocan, como "agregar
+    // cantidad" sobre un producto que ya tenía este problema desde antes.
+    const precioMenorQueCosto =
+      (costoCambio || precioVentaCambio) && esPrecioMenorQueCosto(precioVentaNum, costoReal);
+
+    if (precioMenorQueCosto && !body.confirmarPrecioMenorCosto) {
+      return NextResponse.json(
+        {
+          error: 'El precio de venta es menor al costo registrado. Revísalo antes de continuar.',
+          precioMenorCosto: true,
+        },
+        { status: 409 }
+      );
+    }
+
+    // Para la bitácora de movimientos de valor (ver lib/movimientos-inventario.ts)
+    // interesa el valor NUMÉRICO real, no la cadena de letras - dos costos
+    // escritos distinto pueden desencriptar al mismo número (ceros a la
+    // izquierda), y eso no debería registrarse como un movimiento.
+    const costoRealCambio = costoReal !== productoActual.costoReal;
+
+    // Si esta misma edición toca el costo o el precio y con eso el precio
+    // vuelve a quedar en >= costo, se considera corregido - se resuelve
+    // solo, sin importar qué rol hizo el arreglo.
+    const precioYaCorregido =
+      (costoCambio || precioVentaCambio) && !esPrecioMenorQueCosto(precioVentaNum, costoReal);
 
     const nuevoCodigoBarras = (costoCambio || codigoCambio)
       ? await generarCodigoBarrasUnico(body.codigo, body.costo, prisma)
@@ -176,6 +222,7 @@ export async function PUT(
         referencia: body.referencia.trim().toUpperCase(),
         producto: body.producto.trim().toUpperCase(),
         cantidad: cantidad,
+        cantidadDanada: cantidadDanadaNum,
         unidades: body.unidades.trim().toUpperCase(),
         seccion: body.seccion ? body.seccion.trim().toUpperCase() : productoActual.seccion,
         costo: body.costo.trim().toUpperCase(),
@@ -204,6 +251,39 @@ export async function PUT(
         }
       }
     });
+
+    if (precioMenorQueCosto) {
+      await registrarAlertaPrecioMenorCosto({
+        productoId: producto.id,
+        centroCostoId: producto.centroCostoId,
+        usuarioId: userId,
+        costoNuevo: costoReal,
+        precioVentaNuevo: precioVentaNum,
+      });
+    }
+
+    if (precioYaCorregido) {
+      await resolverAlertasPrecioMenorCosto({ productoId: producto.id, usuarioId: userId });
+    }
+
+    // Bitácora de movimientos de valor: solo cambios de costo (ver
+    // lib/movimientos-inventario.ts) - cantidad y mercancía dañada no
+    // generan movimiento, a pedido explícito. Nunca se registra en
+    // ediciones que no tocan el costo (nombre, cantidad, embalaje, etc.).
+    if (costoRealCambio) {
+      await registrarMovimientoCosto({
+        productoId: producto.id,
+        productoNombre: producto.producto,
+        productoReferencia: producto.referencia,
+        proveedor: producto.proveedor,
+        seccion: producto.seccion,
+        centroCostoId: producto.centroCostoId,
+        usuarioId: userId,
+        costoAnterior: productoActual.costoReal,
+        costoNuevo: costoReal,
+        cantidadActual: cantidad,
+      });
+    }
 
     return NextResponse.json(producto);
   } catch (error: any) {

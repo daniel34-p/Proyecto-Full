@@ -21,6 +21,7 @@ interface Producto {
   referencia: string;
   producto: string;
   cantidad: number;
+  cantidadDanada: number;
   unidades: string;
   seccion?: string;
   costo: string;
@@ -59,12 +60,29 @@ interface QueryState {
   estado: string;
 }
 
+interface ProductoARevisar {
+  centroCosto: { id: string; nombre: string };
+  productoId: string;
+  campos: Array<'costo' | 'precioVenta'>;
+  mensaje: string;
+}
+
 interface SucursalInventarioProps {
   centroCosto: { id: string; nombre: string };
   onVolver: () => void;
+  // NUEVO: llega desde el botón "Revisar" de Alertas, vía
+  // sucursales-view.tsx - abre directamente el producto indicado en el
+  // modal de edición, con el campo correspondiente resaltado.
+  productoARevisar?: ProductoARevisar | null;
+  onProductoARevisarConsumido?: () => void;
 }
 
-export function SucursalInventario({ centroCosto, onVolver }: SucursalInventarioProps) {
+export function SucursalInventario({
+  centroCosto,
+  onVolver,
+  productoARevisar,
+  onProductoARevisarConsumido,
+}: SucursalInventarioProps) {
   const queryInicial: QueryState = {
     page: 1,
     pageSize: 50,
@@ -97,14 +115,19 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
 
   const [estadisticas, setEstadisticas] = useState<{
     totalProductos: number;
-    proveedores: { nombre: string; totalProductos: number; valorTotal: number }[];
-    departamentos: { nombre: string; totalProductos: number; valorTotal: number }[];
+    proveedores: { nombre: string; totalProductos: number; valorTotal: number; valorDanado: number }[];
+    departamentos: { nombre: string; totalProductos: number; valorTotal: number; valorDanado: number }[];
     granTotal: number;
+    granTotalDanado: number;
   } | null>(null);
 
   const [productoToEdit, setProductoToEdit] = useState<Producto | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [advertenciaCampos, setAdvertenciaCampos] = useState<{
+    campos: Array<'costo' | 'precioVenta'>;
+    mensaje: string;
+  } | null>(null);
 
   const authHeaders = () => {
     const token = localStorage.getItem('token');
@@ -184,6 +207,41 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
     fetchEstadisticas();
   }, [fetchOpciones, fetchEstadisticas]);
 
+  // Viene del botón "Revisar" de Alertas (vía sucursales-view.tsx): trae
+  // el producto completo y abre el modal de edición de una vez, con el
+  // campo correspondiente resaltado.
+  useEffect(() => {
+    if (!productoARevisar) return;
+
+    let cancelado = false;
+    (async () => {
+      try {
+        const response = await fetch(`/api/productos/${encodeURIComponent(productoARevisar.productoId)}`, {
+          headers: authHeaders(),
+        });
+        if (cancelado) return;
+        if (!response.ok) {
+          alert('No se pudo cargar el producto. Puede que ya no exista.');
+          return;
+        }
+        const producto = await response.json();
+        if (cancelado) return;
+        setProductoToEdit(producto);
+        setAdvertenciaCampos({ campos: productoARevisar.campos, mensaje: productoARevisar.mensaje });
+        setEditModalOpen(true);
+      } catch (error) {
+        console.error('Error al cargar producto desde alertas:', error);
+      } finally {
+        onProductoARevisarConsumido?.();
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productoARevisar?.productoId]);
+
   const handleFiltrosChange = (parcial: Partial<QueryState>) => {
     setQueryState((prev) => ({ ...prev, ...parcial, page: 1 }));
   };
@@ -240,8 +298,54 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
     }
   };
 
+  // Acción masiva al iniciar un nuevo conteo físico: deja en rojo todos los
+  // productos en 0 de esta agencia, aunque ya estuvieran en verde por otro
+  // motivo. Primero se consulta cuántos se van a afectar (para el confirm),
+  // y solo después se ejecuta el update real.
+  const handleMarcarPendientesMasivo = async () => {
+    try {
+      const countRes = await fetch(
+        `/api/productos/marcar-pendientes-masivo?centroCostoId=${centroCosto.id}`,
+        { headers: authHeaders() }
+      );
+      const countData = await countRes.json();
+      if (!countRes.ok) {
+        alert(countData.error || 'Error al consultar productos pendientes');
+        return;
+      }
+      if (countData.count === 0) {
+        alert('No hay productos con cantidad en 0 para marcar como pendientes en esta agencia.');
+        return;
+      }
+
+      const anioActual = new Date().getFullYear();
+      const confirmado = confirm(
+        `Se marcarán ${countData.count} producto(s) con cantidad en 0 como pendientes de conteo ${anioActual}. ¿Continuar?`
+      );
+      if (!confirmado) return;
+
+      const response = await fetch('/api/productos/marcar-pendientes-masivo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ centroCostoId: centroCosto.id }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Error al marcar productos como pendientes');
+        return;
+      }
+
+      await Promise.all([fetchProductos(queryState), fetchEstadisticas()]);
+      alert(`${data.actualizados} producto(s) marcados como pendientes.`);
+    } catch (error) {
+      console.error('Error al marcar productos como pendientes:', error);
+      alert('Error al marcar productos como pendientes');
+    }
+  };
+
   const handleEdit = (producto: Producto) => {
     setProductoToEdit(producto);
+    setAdvertenciaCampos(null);
     setEditModalOpen(true);
   };
 
@@ -249,6 +353,7 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
     await Promise.all([fetchProductos(queryState), fetchEstadisticas(), fetchOpciones()]);
     setEditModalOpen(false);
     setProductoToEdit(null);
+    setAdvertenciaCampos(null);
   };
 
   const handleImportado = async () => {
@@ -330,6 +435,7 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
         onDelete={handleDelete}
         onEdit={handleEdit}
         onMarcarActualizado={handleMarcarActualizado}
+        onMarcarPendientesMasivo={handleMarcarPendientesMasivo}
         loading={loadingProductos}
         filtros={queryState}
         onFiltrosChange={handleFiltrosChange}
@@ -342,7 +448,10 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
       {/* Modal de edición de producto */}
       <Dialog open={editModalOpen} onOpenChange={(open) => {
         setEditModalOpen(open);
-        if (!open) setProductoToEdit(null);
+        if (!open) {
+          setProductoToEdit(null);
+          setAdvertenciaCampos(null);
+        }
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -354,7 +463,9 @@ export function SucursalInventario({ centroCosto, onVolver }: SucursalInventario
             onCancelEdit={() => {
               setEditModalOpen(false);
               setProductoToEdit(null);
+              setAdvertenciaCampos(null);
             }}
+            camposConAdvertencia={advertenciaCampos}
           />
         </DialogContent>
       </Dialog>

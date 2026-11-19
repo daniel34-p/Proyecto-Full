@@ -26,6 +26,7 @@ interface Producto {
   referencia: string;
   producto: string;
   cantidad: number;
+  cantidadDanada: number;
   unidades: string;
   costo: string;
   costoReal: number;
@@ -263,6 +264,9 @@ export function ScannedProductView({
                 <Label htmlFor="precioVenta">Precio de Venta *</Label>
                 <Input
                   id="precioVenta"
+                  type="number"
+                  step="0.01"
+                  min="0"
                   value={formData.precioVenta}
                   onChange={(e) => handleInputChange('precioVenta', e.target.value)}
                   placeholder="0.00"

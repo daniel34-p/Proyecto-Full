@@ -4,6 +4,7 @@ import { desencriptarCosto } from '@/lib/encryption';
 import { generarCodigoBarrasUnico } from '@/lib/barcode-generator';
 import { verifyToken } from '@/lib/jwt';
 import { derivarCentrosDeUsuario } from '@/lib/user-centros';
+import { esPrecioMenorQueCosto, registrarAlertaPrecioMenorCosto } from '@/lib/historial-alertas';
 
 // GET - Listar productos filtrados por centro de costo, con paginación, filtros y búsqueda
 export async function GET(request: Request) {
@@ -295,10 +296,37 @@ export async function POST(request: Request) {
     }
 
     const costoReal = desencriptarCosto(body.costo);
+    const precioVentaNum = parseFloat(body.precioVenta);
+
+    // Si el precio de venta queda por debajo del costo, se bloquea el
+    // guardado hasta que el usuario confirme explícitamente que quiere
+    // continuar así (mismo patrón que la referencia duplicada arriba). La
+    // respuesta nunca incluye los valores, para no exponer el costo
+    // descifrado en una alerta que puede ver cualquier rol.
+    const precioMenorQueCosto = esPrecioMenorQueCosto(precioVentaNum, costoReal);
+
+    if (precioMenorQueCosto && !body.confirmarPrecioMenorCosto) {
+      return NextResponse.json(
+        {
+          error: 'El precio de venta es menor al costo registrado. Revísalo antes de continuar.',
+          precioMenorCosto: true,
+        },
+        { status: 409 }
+      );
+    }
 
     console.log('🔢 Código de barras generado:', codigoBarras);
 
     const cantidad = parseFloat(body.cantidad);
+
+    // Del conteo físico: cuánto de "cantidad" está en mal estado. Opcional
+    // (0 si no viene) y nunca puede superar la cantidad total - se acota en
+    // vez de rechazar el guardado por esto, ya que no es un dato sensible
+    // como el costo.
+    const cantidadDanadaNum = Math.min(
+      Math.max(0, parseFloat(body.cantidadDanada) || 0),
+      cantidad
+    );
 
     const producto = await prisma.producto.create({
       data: {
@@ -306,6 +334,7 @@ export async function POST(request: Request) {
         referencia: referenciaNormalizada,
         producto: body.producto.trim().toUpperCase(),
         cantidad: cantidad,
+        cantidadDanada: cantidadDanadaNum,
         unidades: body.unidades.trim().toUpperCase(),
         seccion: body.seccion ? body.seccion.trim().toUpperCase() : null,
         costo: body.costo.trim().toUpperCase(),
@@ -316,7 +345,12 @@ export async function POST(request: Request) {
         embalaje: body.embalaje ? body.embalaje.trim().toUpperCase() : null,
         creadoPorId: userId,
         centroCostoId: centroCostoIdAsignado,
-        anioInventario: new Date().getFullYear(),
+        // Si nace con cantidad 0, arranca en rojo (pendiente) en vez de
+        // verde - así cuando después hagan el conteo físico y le pongan
+        // cantidad, el cambio de cantidad lo pasa a verde automáticamente
+        // (ver cantidadCambio en app/api/productos/[id]/route.ts), igual que
+        // cualquier otro producto pendiente.
+        anioInventario: cantidad === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear(),
       },
       include: {
         centroCosto: {
@@ -335,6 +369,20 @@ export async function POST(request: Request) {
     });
 
     console.log('✅ Producto creado:', producto);
+
+    if (precioMenorQueCosto) {
+      await registrarAlertaPrecioMenorCosto({
+        productoId: producto.id,
+        centroCostoId: centroCostoIdAsignado,
+        usuarioId: userId,
+        costoNuevo: costoReal,
+        precioVentaNuevo: precioVentaNum,
+      });
+    }
+
+    // No se registra movimiento de valor al crear: "Movimientos" solo
+    // trackea cambios de costo (ver lib/movimientos-inventario.ts), y un
+    // producto nuevo no tiene un costo "anterior" con el que compararse.
 
     return NextResponse.json(producto, { status: 201 });
   } catch (error: any) {

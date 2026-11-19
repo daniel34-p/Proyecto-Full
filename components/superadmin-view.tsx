@@ -7,7 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UsuariosTable } from '@/components/usuarios-table';
 import { UsuarioForm } from '@/components/usuario-form';
 import { SucursalesView } from '@/components/sucursales-view';
-import { UserPlus, Users, Building2, Menu, X } from 'lucide-react';
+import { HistorialAlertasView, AlertaHistorial } from '@/components/historial-alertas-view';
+import { MovimientosInventarioView, Movimiento } from '@/components/movimientos-inventario-view';
+import { useAlertasPendientes } from '@/lib/use-alertas-pendientes';
+import { useMovimientosPendientes } from '@/lib/use-movimientos-pendientes';
+import { UserPlus, Users, Building2, Menu, X, History, ArrowUpDown } from 'lucide-react';
 
 interface Usuario {
   id: string;
@@ -22,10 +26,12 @@ interface Usuario {
   };
 }
 
-type VistaActiva = 'usuarios' | 'sucursales';
+type VistaActiva = 'usuarios' | 'sucursales' | 'alertas' | 'movimientos';
 
 export function SuperAdminView() {
   const { user, logout } = useAuth();
+  const alertasPendientes = useAlertasPendientes();
+  const movimientosPendientes = useMovimientosPendientes();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -33,6 +39,47 @@ export function SuperAdminView() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [vistaActiva, setVistaActiva] = useState<VistaActiva>('usuarios');
+
+  // NUEVO: llega desde el botón "Revisar" de Alertas o de Movimientos - le
+  // dice a SucursalesView qué sucursal abrir y qué producto editar
+  // directamente (ver sucursales-view.tsx y sucursal-inventario.tsx).
+  const [productoARevisar, setProductoARevisar] = useState<{
+    centroCosto: { id: string; nombre: string };
+    productoId: string;
+    campos: Array<'costo' | 'precioVenta'>;
+    mensaje: string;
+  } | null>(null);
+
+  const handleRevisarDesdeHistorial = (alerta: AlertaHistorial) => {
+    if (!alerta.producto || !alerta.centroCosto) {
+      alert('No se puede abrir este producto: falta la sucursal o el producto ya no existe.');
+      return;
+    }
+    setProductoARevisar({
+      centroCosto: alerta.centroCosto,
+      productoId: alerta.producto.id,
+      campos: ['costo', 'precioVenta'],
+      mensaje: 'El precio de venta quedó por debajo del costo. Revisa ambos valores.',
+    });
+    setVistaActiva('sucursales');
+  };
+
+  // Viene del botón "Revisar" de Movimientos: igual patrón, pero
+  // resaltando solo "costo" - no hay nada que corregir, es solo para que
+  // el superadmin confirme que el cambio es correcto.
+  const handleRevisarDesdeMovimiento = (movimiento: Movimiento) => {
+    if (!movimiento.productoId || !movimiento.centroCosto) {
+      alert('No se puede abrir este producto: falta la sucursal o el producto ya no existe.');
+      return;
+    }
+    setProductoARevisar({
+      centroCosto: movimiento.centroCosto,
+      productoId: movimiento.productoId,
+      campos: ['costo'],
+      mensaje: 'Este producto tuvo un cambio de costo registrado en Movimientos. Verifica que esté correcto.',
+    });
+    setVistaActiva('sucursales');
+  };
 
   const fetchUsuarios = async () => {
     try {
@@ -184,14 +231,15 @@ export function SuperAdminView() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="secondary"
-              onClick={() => logout()}
-              size="sm"
-              className="w-full sm:w-auto"
-            >
-              Cerrar Sesión
-            </Button>
+            <div className="flex items-center gap-1 w-full sm:w-auto justify-end">
+              <Button
+                variant="secondary"
+                onClick={() => logout()}
+                size="sm"
+              >
+                Cerrar Sesión
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -236,6 +284,38 @@ export function SuperAdminView() {
           >
             <Building2 className="h-4 w-4" />
             Sucursales
+          </button>
+          <button
+            onClick={() => irAVista('alertas')}
+            className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              vistaActiva === 'alertas'
+                ? 'bg-purple-50 text-purple-700'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <History className="h-4 w-4" />
+            Alertas
+            {alertasPendientes > 0 && (
+              <span className="h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center">
+                {alertasPendientes > 99 ? '99+' : alertasPendientes}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => irAVista('movimientos')}
+            className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              vistaActiva === 'movimientos'
+                ? 'bg-purple-50 text-purple-700'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ArrowUpDown className="h-4 w-4" />
+            Movimientos
+            {movimientosPendientes > 0 && (
+              <span className="h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center">
+                {movimientosPendientes > 99 ? '99+' : movimientosPendientes}
+              </span>
+            )}
           </button>
         </nav>
       </aside>
@@ -317,7 +397,20 @@ export function SuperAdminView() {
           </>
         )}
 
-        {vistaActiva === 'sucursales' && <SucursalesView />}
+        {vistaActiva === 'sucursales' && (
+          <SucursalesView
+            productoARevisar={productoARevisar}
+            onProductoARevisarConsumido={() => setProductoARevisar(null)}
+          />
+        )}
+
+        {vistaActiva === 'alertas' && (
+          <HistorialAlertasView onRevisarProducto={handleRevisarDesdeHistorial} />
+        )}
+
+        {vistaActiva === 'movimientos' && (
+          <MovimientosInventarioView onRevisarProducto={handleRevisarDesdeMovimiento} />
+        )}
       </main>
 
       {/* Modal de formulario de usuario */}

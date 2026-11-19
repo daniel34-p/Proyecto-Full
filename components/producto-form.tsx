@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useState, useEffect, useId } from 'react';
-import { Plus, Search, X, PackagePlus, ChevronRight, Printer } from 'lucide-react';
+import { Plus, Search, X, PackagePlus, ChevronRight, Printer, AlertTriangle } from 'lucide-react';
 import { OpcionesConfig } from '@/components/opciones-config';
 import { BarcodeDisplay } from '@/components/barcode-display';
 import { useAuth } from '@/lib/auth-context';
@@ -27,6 +27,7 @@ interface Producto {
   referencia: string;
   producto: string;
   cantidad: number;
+  cantidadDanada: number;
   unidades: string;
   seccion?: string;
   costo: string;
@@ -59,6 +60,11 @@ interface ProductoFormProps {
   mostrarBusqueda?: boolean; // Nuevo prop para controlar si se muestra la búsqueda
   centroCostoId?: string;       // NUEVO: centro de costo activo (multi-centro)
   centroCostoNombre?: string;   // NUEVO: nombre del centro activo, para mensajes
+  // NUEVO: llega desde el botón "Revisar" del Historial (ver
+  // historial-alertas-view.tsx) - resalta el/los campos que originaron la
+  // alerta y hace scroll+foco hacia el primero, para que no se pierdan
+  // entre el resto del formulario.
+  camposConAdvertencia?: { campos: Array<'costo' | 'precioVenta'>; mensaje: string } | null;
 }
 
 // Resultado del buscador cruzado entre agencias (GET /api/productos/buscar-referencia).
@@ -107,7 +113,10 @@ export function ProductoForm({
   mostrarBusqueda = false,
   centroCostoId,       // NUEVO
   centroCostoNombre,   // NUEVO
+  camposConAdvertencia = null,
 }: ProductoFormProps) {
+  const tieneAdvertencia = (campo: 'costo' | 'precioVenta') =>
+    !!camposConAdvertencia?.campos.includes(campo);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   // Cuando una acción falla por sesión vencida (401), se muestra un aviso
@@ -245,7 +254,12 @@ export function ProductoForm({
       setValue('proveedor', productoToEdit.proveedor);
       setValue('referencia', productoToEdit.referencia);
       setValue('producto', productoToEdit.producto);
-      setValue('cantidad', productoToEdit.cantidad.toString());
+      // El campo "cantidad" del formulario ahora es solo la cantidad en BUEN
+      // estado - se deriva restándole la dañada al total guardado en la BD.
+      const danadaActual = productoToEdit.cantidadDanada || 0;
+      const buenaActual = Math.max(0, productoToEdit.cantidad - danadaActual);
+      setValue('cantidad', buenaActual.toString());
+      setValue('cantidadDanada', danadaActual.toString());
       setValue('unidades', productoToEdit.unidades);
       setValue('seccion', productoToEdit.seccion || '');
       setValue('costo', productoToEdit.costo);
@@ -263,6 +277,21 @@ export function ProductoForm({
       setAvisoYaExisteEnMiAgencia(null);
     }
   }, [productoToEdit, setValue, reset]);
+
+  // Viene del botón "Revisar" del Historial: lleva la vista directo al
+  // campo marcado, para que la advertencia no se pierda entre el resto del
+  // formulario.
+  useEffect(() => {
+    if (!productoToEdit || !camposConAdvertencia || camposConAdvertencia.campos.length === 0) return;
+    const primerCampo = camposConAdvertencia.campos[0];
+    const timeoutId = setTimeout(() => {
+      const elemento = document.getElementById(primerCampo);
+      elemento?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      elemento?.focus();
+    }, 150);
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productoToEdit?.id]);
 
   // Buscador de catálogo entre agencias, con debounce: espera a que el
   // usuario deje de escribir ~350ms antes de consultar, y solo busca a
@@ -305,6 +334,7 @@ export function ProductoForm({
     setValue('referencia', item.referencia);
     setValue('producto', item.producto);
     setValue('cantidad', '0');
+    setValue('cantidadDanada', '0');
     setValue('unidades', item.unidades);
     setValue('seccion', item.seccion || '');
     setValue('costo', item.costo);
@@ -533,7 +563,8 @@ export function ProductoForm({
   const guardarProducto = async (
     data: ProductoFormData,
     imprimir: boolean,
-    confirmarDuplicado: boolean
+    confirmarDuplicado: boolean,
+    confirmarPrecioMenorCosto: boolean = false
   ): Promise<void> => {
     const url = isEditing
       ? `/api/productos/${productoToEdit!.id}`
@@ -542,6 +573,12 @@ export function ProductoForm({
     const method = isEditing ? 'PUT' : 'POST';
 
     const token = localStorage.getItem('token');
+    // "data.cantidad" es lo que el usuario puso en "Cantidad en Buen Estado".
+    // El total que de verdad se guarda (y que entra al Gran Total) es esa
+    // más la cantidad en mal estado - se suman recién acá, al enviar, para
+    // que el backend siga recibiendo "cantidad" como el total de siempre.
+    const cantidadTotal =
+      (parseFloat(data.cantidad) || 0) + (parseFloat(data.cantidadDanada || '0') || 0);
     const response = await fetch(url, {
       method,
       headers: {
@@ -550,6 +587,7 @@ export function ProductoForm({
       },
       body: JSON.stringify({
         ...data,
+        cantidad: cantidadTotal.toString(),
         userId: JSON.parse(localStorage.getItem('user') || '{}').id,
         // NUEVO: solo al crear (nunca al editar) - le dice al backend en
         // qué centro de costo (módulo activo) se está registrando el
@@ -557,6 +595,7 @@ export function ProductoForm({
         // usuario, igual que siempre.
         ...(!isEditing && centroCostoId ? { centroCostoId } : {}),
         ...(!isEditing && confirmarDuplicado ? { confirmarDuplicado: true } : {}),
+        ...(confirmarPrecioMenorCosto ? { confirmarPrecioMenorCosto: true } : {}),
       }),
     });
 
@@ -579,7 +618,21 @@ export function ProductoForm({
           `${errorData.error}\n\n¿Deseas continuar creando este producto de todas formas?`
         );
         if (continuar) {
-          return guardarProducto(data, imprimir, true);
+          return guardarProducto(data, imprimir, true, confirmarPrecioMenorCosto);
+        }
+        return;
+      }
+
+      // Precio de venta por debajo del costo (al crear o al editar): no se
+      // bloquea para siempre, pero se le pide confirmar explícitamente.
+      // Si confirma, el backend guarda el producto y deja la alerta
+      // registrada en el Historial para que admin/superadmin la revisen.
+      if (errorData.precioMenorCosto && !confirmarPrecioMenorCosto) {
+        const continuar = confirm(
+          `${errorData.error}\n\n¿Deseas guardar de todas formas? Quedará registrado en el Historial para revisión.`
+        );
+        if (continuar) {
+          return guardarProducto(data, imprimir, confirmarDuplicado, true);
         }
         return;
       }
@@ -637,7 +690,7 @@ export function ProductoForm({
     setSessionExpired(false);
 
     try {
-      await guardarProducto(data, imprimir, false);
+      await guardarProducto(data, imprimir, false, false);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -1072,9 +1125,9 @@ export function ProductoForm({
                     )}
                   </div>
 
-                  {/* Cantidad - AHORA ACEPTA DECIMALES */}
+                  {/* Cantidad en Buen Estado - AHORA ACEPTA DECIMALES */}
                   <div className="space-y-2">
-                    <Label htmlFor="cantidad">Cantidad *</Label>
+                    <Label htmlFor="cantidad">Cantidad en Buen Estado *</Label>
                     <Input
                       id="cantidad"
                       type="number"
@@ -1087,6 +1140,32 @@ export function ProductoForm({
                       <p className="text-sm text-red-500">{errors.cantidad.message}</p>
                     )}
                     <p className="text-xs text-gray-500">Acepta números enteros y decimales, incluyendo 0</p>
+                  </div>
+
+                  {/* Cantidad en mal estado - del conteo físico. Opcional, 0 por
+                      defecto. Es independiente de la de arriba: el total que se
+                      guarda y suma al Gran Total es la suma de ambas. */}
+                  <div className="space-y-2">
+                    <Label htmlFor="cantidadDanada">Cantidad en Mal Estado</Label>
+                    <Input
+                      id="cantidadDanada"
+                      type="number"
+                      step="0.01"
+                      autoComplete="off"
+                      {...register('cantidadDanada')}
+                      placeholder="0"
+                    />
+                    {errors.cantidadDanada && (
+                      <p className="text-sm text-red-500">{errors.cantidadDanada.message}</p>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      Cuánto está dañado o en mal estado. Déjalo en 0 si todo está bien. El total
+                      registrado será{' '}
+                      <strong>
+                        {(parseFloat(watch('cantidad') || '0') || 0) + (parseFloat(watch('cantidadDanada') || '0') || 0)}
+                      </strong>{' '}
+                      (buen estado + mal estado).
+                    </p>
                   </div>
 
                   {/* Unidades */}
@@ -1157,12 +1236,18 @@ export function ProductoForm({
                   {/* Costo */}
                   <div className="space-y-2">
                     <Label htmlFor="costo">Costo (Código) *</Label>
+                    {tieneAdvertencia('costo') && (
+                      <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded-md px-2 py-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                        <span>{camposConAdvertencia?.mensaje}</span>
+                      </div>
+                    )}
                     <Input
                       id="costo"
                       autoComplete="off"
                       {...register('costo')}
                       placeholder="X"
-                      className="uppercase"
+                      className={`uppercase ${tieneAdvertencia('costo') ? 'border-amber-400 ring-2 ring-amber-200 focus-visible:ring-amber-400' : ''}`}
                     />
                     {errors.costo && (
                       <p className="text-sm text-red-500">{errors.costo.message}</p>
@@ -1172,11 +1257,21 @@ export function ProductoForm({
                   {/* Precio de Venta */}
                   <div className="space-y-2">
                     <Label htmlFor="precioVenta">Precio de Venta *</Label>
+                    {tieneAdvertencia('precioVenta') && (
+                      <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded-md px-2 py-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                        <span>{camposConAdvertencia?.mensaje}</span>
+                      </div>
+                    )}
                     <Input
                       id="precioVenta"
+                      type="number"
+                      step="0.01"
+                      min="0"
                       autoComplete="off"
                       {...register('precioVenta')}
                       placeholder="0.00"
+                      className={tieneAdvertencia('precioVenta') ? 'border-amber-400 ring-2 ring-amber-200 focus-visible:ring-amber-400' : ''}
                     />
                     {errors.precioVenta && (
                       <p className="text-sm text-red-500">{errors.precioVenta.message}</p>

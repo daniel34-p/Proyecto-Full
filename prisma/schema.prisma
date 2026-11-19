@@ -27,6 +27,13 @@ model CentroCosto {
   // esos son globales, iguales para todos los centros.
   opcionesCatalogo OpcionCatalogo[]
 
+  // NUEVO: alertas de costo/precio generadas por productos de este centro.
+  historialAlertas HistorialAlerta[]
+
+  // NUEVO: movimientos de valor de este centro (ver MovimientoInventario
+  // más abajo).
+  movimientosInventario MovimientoInventario[]
+
   @@index([nombre])
   @@index([activo])
 }
@@ -51,6 +58,16 @@ model Usuario {
   // centroCostoId (como siempre) y los demás aquí.
   centrosCostoAdicionales UsuarioCentroCosto[]
 
+  // NUEVO: alertas de costo/precio - las que este usuario generó al crear o
+  // editar un producto, y las que revisó/resolvió desde el Historial.
+  alertasGeneradas HistorialAlerta[] @relation("AlertaGeneradaPor")
+  alertasResueltas HistorialAlerta[] @relation("AlertaResueltaPor")
+
+  // NUEVO: movimientos de valor que este usuario registró al editar un
+  // producto, y los que marcó como revisados.
+  movimientosRegistrados MovimientoInventario[] @relation("MovimientoRegistradoPor")
+  movimientosRevisados   MovimientoInventario[] @relation("MovimientoRevisadoPor")
+
   @@index([email])
   @@index([activo])
   @@index([centroCostoId])
@@ -62,6 +79,14 @@ model Producto {
   referencia     String
   producto       String
   cantidad       Float        // Float para aceptar decimales
+
+  // NUEVO: de la "cantidad" total, cuánto está en mal estado (detectado en
+  // el conteo físico). Nunca debería superar "cantidad" - se valida al
+  // guardar. Sigue sumando al valor total del inventario igual que antes;
+  // solo permite mostrar el desglose bueno/dañado en las estadísticas (ver
+  // app/api/productos/estadisticas/route.ts).
+  cantidadDanada Float        @default(0)
+
   unidades       String
   costo          String
   costoReal      Int          @default(0)
@@ -100,6 +125,14 @@ model Producto {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  // NUEVO: alertas de costo/precio generadas por este producto (ver
+  // HistorialAlerta más abajo).
+  historialAlertas HistorialAlerta[]
+
+  // NUEVO: movimientos de valor (costo/cantidad/dañado) de este producto -
+  // ver MovimientoInventario más abajo.
+  movimientosInventario MovimientoInventario[]
+
   @@index([proveedor])
   @@index([producto])
   @@index([creadoPorId])
@@ -110,6 +143,105 @@ model Producto {
   @@index([anioInventario])
   @@index([centroCostoId, anioInventario]) // La combinación que más se consulta
 }
+
+// Alertas: se inserta una fila SOLO cuando el precio de venta queda por
+// debajo del costo - en una edición/creación normal no se escribe nada
+// aquí. Tabla puramente aditiva: no modifica Producto ni Usuario, y solo
+// la consulta el módulo Alertas (admin/superadmin/asesor).
+model HistorialAlerta {
+  id       String @id @default(cuid())
+  tipo     String // 'PRECIO_MENOR_COSTO'
+
+  productoId String
+  producto   Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+
+  // Copiado del producto al momento de la alerta (igual que centroCostoId en
+  // Producto) para que el Historial filtre por sucursal sin tener que unir
+  // con Producto cada vez.
+  centroCostoId String?
+  centroCosto   CentroCosto? @relation(fields: [centroCostoId], references: [id])
+
+  usuarioId String?
+  usuario   Usuario? @relation("AlertaGeneradaPor", fields: [usuarioId], references: [id])
+
+  // Snapshot de los valores en el momento de la alerta (no se vuelven a leer
+  // de Producto después, porque ese valor puede seguir cambiando).
+  // "costoAnterior" queda sin usar (era de un tipo de alerta que ya no
+  // existe) - se deja la columna en vez de migrar para no tocar la tabla
+  // sin necesidad.
+  costoAnterior    Int?
+  costoNuevo       Int
+  precioVentaNuevo Float?
+
+  resuelto      Boolean   @default(false)
+  resueltoPorId String?
+  resueltoPor   Usuario?  @relation("AlertaResueltaPor", fields: [resueltoPorId], references: [id])
+  resueltoAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([centroCostoId, resuelto])
+  @@index([productoId])
+  @@index([tipo])
+  @@index([createdAt])
+}
+
+// Registro pasivo de cada cambio de costo (suba o baje) - a diferencia de
+// HistorialAlerta, esto NO es una alerta que requiera revisión, es
+// simplemente la justificación de por qué el Gran Total subió o bajó, para
+// que el administrador pueda explicárselo a contabilidad. Se inserta una
+// fila SOLO cuando el costo real de verdad cambió (ver
+// app/api/productos/[id]/route.ts) - cantidad y mercancía dañada no
+// generan movimiento acá, a pedido explícito. Tabla puramente aditiva.
+model MovimientoInventario {
+  id   String @id @default(cuid())
+  tipo String // 'COSTO'
+
+  // La relación es SetNull, NO Cascade: si el producto se elimina más
+  // adelante, este movimiento (que es el registro contable de algo que
+  // YA pasó) se queda - solo pierde el link. Por eso también se copian
+  // estos datos del producto al momento del movimiento, para que la fila
+  // siga siendo legible aunque el producto ya no exista.
+  productoId         String?
+  producto           Producto? @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  productoNombre     String
+  productoReferencia String
+  proveedor          String
+  seccion            String?
+
+  centroCostoId String?
+  centroCosto   CentroCosto? @relation(fields: [centroCostoId], references: [id])
+
+  usuarioId String?
+  usuario   Usuario? @relation("MovimientoRegistradoPor", fields: [usuarioId], references: [id])
+
+  // Costo real antes y después de este movimiento.
+  valorAnterior Float
+  valorNuevo    Float
+
+  // Cuánto cambió el Gran Total por este cambio de costo específico
+  // (puede ser negativo). Si el producto no tiene cantidad en inventario
+  // en ese momento, queda en 0 - el cambio de costo no impacta nada en
+  // plata, pero el movimiento se registra igual para que quede visible.
+  deltaValor Float
+
+  // El administrador puede marcar que ya revisó este cambio de costo -
+  // igual patrón que HistorialAlerta.resuelto, pero acá no hay nada que
+  // "corregir" (no se autorresuelve solo); es solo una confirmación manual
+  // de que lo vio y está bien.
+  resuelto      Boolean   @default(false)
+  resueltoPorId String?
+  resueltoPor   Usuario?  @relation("MovimientoRevisadoPor", fields: [resueltoPorId], references: [id])
+  resueltoAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([centroCostoId, createdAt])
+  @@index([centroCostoId, resuelto])
+  @@index([productoId])
+  @@index([tipo])
+}
+
 // Catálogo de opciones personalizadas para los desplegables del formulario
 // de productos (proveedor, unidades, departamento/sección). Antes vivían en
 // localStorage - una copia distinta por navegador, sin compartir entre

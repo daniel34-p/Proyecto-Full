@@ -18,6 +18,7 @@ interface Producto {
   referencia: string;
   producto: string;
   cantidad: number;
+  cantidadDanada: number;
   unidades: string;
   costo: string;
   costoReal: number;

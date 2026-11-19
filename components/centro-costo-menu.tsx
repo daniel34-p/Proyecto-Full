@@ -14,6 +14,9 @@ export interface ModuloMenu {
   id: string;
   label: string;
   icon?: ReactNode;
+  // Número a mostrar junto a la etiqueta (ej. alertas pendientes). 0 o
+  // undefined no muestra nada.
+  badge?: number;
 }
 
 interface CentroCostoMenuProps {
@@ -103,6 +106,11 @@ export function CentroCostoMenu({
                   <span className="flex items-center gap-2">
                     {modulo.icon}
                     {modulo.label}
+                    {!!modulo.badge && modulo.badge > 0 && (
+                      <span className="h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center">
+                        {modulo.badge > 99 ? '99+' : modulo.badge}
+                      </span>
+                    )}
                   </span>
                   {activo && <Check className="h-4 w-4" />}
                 </button>

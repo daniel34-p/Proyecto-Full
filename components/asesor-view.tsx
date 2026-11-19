@@ -15,7 +15,9 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Camera, Building2, PackagePlus, List } from 'lucide-react';
+import { HistorialAlertasView, AlertaHistorial } from '@/components/historial-alertas-view';
+import { useAlertasPendientes } from '@/lib/use-alertas-pendientes';
+import { Camera, Building2, PackagePlus, List, History } from 'lucide-react';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
@@ -24,6 +26,7 @@ interface Producto {
   referencia: string;
   producto: string;
   cantidad: number;
+  cantidadDanada: number;
   unidades: string;
   seccion?: string;
   costo: string;
@@ -63,16 +66,18 @@ const QUERY_INICIAL: QueryState = {
   estado: 'todos',
 };
 
-type Modulo = 'registrar' | 'productos';
-
-const MODULOS = [
-  { id: 'registrar', label: 'Registrar Producto', icon: <PackagePlus className="h-4 w-4" /> },
-  { id: 'productos', label: 'Ver Productos', icon: <List className="h-4 w-4" /> },
-];
+type Modulo = 'registrar' | 'productos' | 'alertas';
 
 export function AsesorView() {
   const { user, logout, centrosCosto, centroCostoActivo, setCentroCostoActivo } = useAuth();
+  const alertasPendientes = useAlertasPendientes();
   const [modulo, setModulo] = useState<Modulo>('registrar');
+
+  const MODULOS = [
+    { id: 'registrar', label: 'Registrar Producto', icon: <PackagePlus className="h-4 w-4" /> },
+    { id: 'productos', label: 'Ver Productos', icon: <List className="h-4 w-4" /> },
+    { id: 'alertas', label: 'Alertas', icon: <History className="h-4 w-4" />, badge: alertasPendientes },
+  ];
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Producto | null>(null);
@@ -93,6 +98,12 @@ export function AsesorView() {
   });
   const [productoToEdit, setProductoToEdit] = useState<Producto | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  // NUEVO: llega desde el botón "Revisar" del Historial - qué campo(s)
+  // resaltar en el formulario (ver producto-form.tsx).
+  const [advertenciaCampos, setAdvertenciaCampos] = useState<{
+    campos: Array<'costo' | 'precioVenta'>;
+    mensaje: string;
+  } | null>(null);
 
   const authHeaders = () => {
     const token = localStorage.getItem('token');
@@ -200,6 +211,7 @@ export function AsesorView() {
 
   const handleEdit = (producto: Producto) => {
     setProductoToEdit(producto);
+    setAdvertenciaCampos(null);
     setEditModalOpen(true);
   };
 
@@ -207,11 +219,38 @@ export function AsesorView() {
     await Promise.all([fetchProductos(queryState), fetchOpciones()]);
     setEditModalOpen(false);
     setProductoToEdit(null);
+    setAdvertenciaCampos(null);
   };
 
   const handleSuccess = () => {
     setShowSuccessMessage(true);
     setTimeout(() => setShowSuccessMessage(false), 3000);
+  };
+
+  // Viene del botón "Revisar" de Alertas: trae el producto completo (la
+  // alerta solo guarda un resumen liviano) y abre el mismo modal de
+  // edición de siempre, con el campo resaltado.
+  const handleRevisarDesdeHistorial = async (alerta: AlertaHistorial) => {
+    if (!alerta.producto) return;
+    try {
+      const response = await fetch(`/api/productos/${encodeURIComponent(alerta.producto.id)}`, {
+        headers: authHeaders(),
+      });
+      if (!response.ok) {
+        alert('No se pudo cargar el producto. Puede que ya no exista.');
+        return;
+      }
+      const producto = await response.json();
+      setProductoToEdit(producto);
+      setAdvertenciaCampos({
+        campos: ['costo', 'precioVenta'],
+        mensaje: 'El precio de venta quedó por debajo del costo. Revisa ambos valores.',
+      });
+      setEditModalOpen(true);
+    } catch (error) {
+      console.error('Error al cargar producto desde el historial:', error);
+      alert('Error al cargar el producto');
+    }
   };
 
   return (
@@ -300,6 +339,12 @@ export function AsesorView() {
             </CardContent>
           </Card>
         </main>
+      ) : modulo === 'alertas' ? (
+        <main className="p-4 sm:p-6 lg:p-8">
+          <div className="max-w-7xl mx-auto">
+            <HistorialAlertasView onRevisarProducto={handleRevisarDesdeHistorial} />
+          </div>
+        </main>
       ) : (
         <main className="p-4 sm:p-6 lg:p-8">
           <div className="max-w-7xl mx-auto">
@@ -322,7 +367,10 @@ export function AsesorView() {
 
       <Dialog open={editModalOpen} onOpenChange={(open) => {
         setEditModalOpen(open);
-        if (!open) setProductoToEdit(null);
+        if (!open) {
+          setProductoToEdit(null);
+          setAdvertenciaCampos(null);
+        }
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -334,7 +382,9 @@ export function AsesorView() {
             onCancelEdit={() => {
               setEditModalOpen(false);
               setProductoToEdit(null);
+              setAdvertenciaCampos(null);
             }}
+            camposConAdvertencia={advertenciaCampos}
           />
         </DialogContent>
       </Dialog>

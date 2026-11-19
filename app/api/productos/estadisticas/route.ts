@@ -75,36 +75,53 @@ export async function GET(request: Request) {
 
     const productos = await prisma.producto.findMany({
       where: whereClause,
-      select: { proveedor: true, seccion: true, costoReal: true, cantidad: true },
+      select: { proveedor: true, seccion: true, costoReal: true, cantidad: true, cantidadDanada: true },
     });
 
-    const porProveedor: Record<string, { nombre: string; totalProductos: number; valorTotal: number }> = {};
-    const porDepartamento: Record<string, { nombre: string; totalProductos: number; valorTotal: number }> = {};
+    // NUEVO: además del valor total de siempre, se suma el valor de lo que
+    // está en mal estado (conteo físico) - mismo recorrido de una sola
+    // pasada, sin ninguna consulta adicional. "valorBueno" es la resta, no
+    // se guarda por separado.
+    const porProveedor: Record<
+      string,
+      { nombre: string; totalProductos: number; valorTotal: number; valorDanado: number }
+    > = {};
+    const porDepartamento: Record<
+      string,
+      { nombre: string; totalProductos: number; valorTotal: number; valorDanado: number }
+    > = {};
 
     for (const p of productos) {
+      const valor = p.costoReal * p.cantidad;
+      const valorDanado = p.costoReal * (p.cantidadDanada || 0);
+
       if (!porProveedor[p.proveedor]) {
-        porProveedor[p.proveedor] = { nombre: p.proveedor, totalProductos: 0, valorTotal: 0 };
+        porProveedor[p.proveedor] = { nombre: p.proveedor, totalProductos: 0, valorTotal: 0, valorDanado: 0 };
       }
       porProveedor[p.proveedor].totalProductos += 1;
-      porProveedor[p.proveedor].valorTotal += p.costoReal * p.cantidad;
+      porProveedor[p.proveedor].valorTotal += valor;
+      porProveedor[p.proveedor].valorDanado += valorDanado;
 
       const depKey = p.seccion || 'SIN DEPARTAMENTO';
       if (!porDepartamento[depKey]) {
-        porDepartamento[depKey] = { nombre: depKey, totalProductos: 0, valorTotal: 0 };
+        porDepartamento[depKey] = { nombre: depKey, totalProductos: 0, valorTotal: 0, valorDanado: 0 };
       }
       porDepartamento[depKey].totalProductos += 1;
-      porDepartamento[depKey].valorTotal += p.costoReal * p.cantidad;
+      porDepartamento[depKey].valorTotal += valor;
+      porDepartamento[depKey].valorDanado += valorDanado;
     }
 
     const proveedores = Object.values(porProveedor);
     const departamentos = Object.values(porDepartamento).sort((a, b) => b.valorTotal - a.valorTotal);
     const granTotal = proveedores.reduce((sum, p) => sum + p.valorTotal, 0);
+    const granTotalDanado = proveedores.reduce((sum, p) => sum + p.valorDanado, 0);
 
     return NextResponse.json({
       totalProductos: productos.length,
       proveedores,
       departamentos,
       granTotal,
+      granTotalDanado,
     });
   } catch (error) {
     console.error('Error al obtener estadísticas:', error);
