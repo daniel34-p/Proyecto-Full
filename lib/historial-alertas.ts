@@ -10,7 +10,10 @@ import { prisma } from '@/lib/prisma';
 // pasivo, no una alerta que requiera acción.
 
 export function esPrecioMenorQueCosto(precioVenta: number, costoReal: number): boolean {
-  return !isNaN(precioVenta) && precioVenta < costoReal;
+  // Mientras el precio de venta siga en 0 (muchas agencias lo dejan así
+  // temporalmente mientras averiguan el precio real), no tiene sentido
+  // alertar ni bloquear el guardado - recién se evalúa desde $1 en adelante.
+  return !isNaN(precioVenta) && precioVenta > 1 && precioVenta < costoReal;
 }
 
 export async function registrarAlertaPrecioMenorCosto(params: {
