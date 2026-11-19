@@ -230,7 +230,10 @@ export async function PUT(
         precioVenta: body.precioVenta,
         codigo: body.codigo,
         embalaje: body.embalaje ? body.embalaje.trim().toUpperCase() : null,
-        editadoPorId: userId,
+        // El superadmin no cuenta para la columna "Creado / Editado por" -
+        // si edita el producto, se deja intacto a quien lo haya tocado antes
+        // (admin/asesor), o sin editar si todavía nadie lo había tocado.
+        ...(usuario.rol !== 'superadmin' ? { editadoPorId: userId } : {}),
         ...(cantidadCambio ? { anioInventario: anioActual } : {}),
         ...(nuevoCodigoBarras ? { codigoBarras: nuevoCodigoBarras } : {}),
         // NO cambiar centroCostoId al editar

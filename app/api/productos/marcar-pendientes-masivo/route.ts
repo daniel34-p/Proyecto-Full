@@ -82,7 +82,12 @@ export async function POST(request: Request) {
     const anioActual = new Date().getFullYear();
     const { count } = await prisma.producto.updateMany({
       where: { centroCostoId: centroCostoId!, cantidad: 0, anioInventario: anioActual },
-      data: { anioInventario: anioActual - 1, editadoPorId: usuario.id },
+      data: {
+        anioInventario: anioActual - 1,
+        // El superadmin no cuenta para la columna "Creado / Editado por" -
+        // ver la misma regla en app/api/productos/[id]/route.ts.
+        ...(usuario.rol !== 'superadmin' ? { editadoPorId: usuario.id } : {}),
+      },
     });
 
     return NextResponse.json({ actualizados: count });

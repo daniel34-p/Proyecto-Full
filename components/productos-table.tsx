@@ -89,6 +89,7 @@ interface Filtros {
   creadoPorId: string;
   centroCostoId: string;
   estado: string; // 'activos' | 'inactivos' | 'todos'
+  cantidad: string; // 'con' | 'sin' | 'todos'
 }
 
 interface ProductosTableProps {
@@ -175,7 +176,8 @@ export function ProductosTable({
     filtros.seccion !== 'todos' ||
     filtros.creadoPorId !== 'todos' ||
     filtros.centroCostoId !== 'todos' ||
-    filtros.estado !== 'todos';
+    filtros.estado !== 'todos' ||
+    filtros.cantidad !== 'todos';
 
   const topRef = useRef<HTMLDivElement>(null);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
@@ -225,11 +227,12 @@ export function ProductosTable({
 
           {/* Filtros y búsqueda */}
           <div className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Búsqueda */}
-              <div className="md:col-span-1">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500">Buscar</p>
                 <Input
-                  placeholder="Buscar por código, nombre..."
+                  placeholder="Código, nombre..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   className="w-full"
@@ -237,13 +240,14 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Proveedor */}
-              <div className="md:col-span-1">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500">Proveedor</p>
                 <Select value={filtros.proveedor} onValueChange={(v) => onFiltrosChange({ proveedor: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por proveedor" />
+                    <SelectValue placeholder="Proveedor" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todos los proveedores</SelectItem>
+                    <SelectItem value="todos">Todos</SelectItem>
                     {opciones.proveedores.map((prov) => (
                       <SelectItem key={prov} value={prov} className="capitalize">
                         {prov}
@@ -254,13 +258,14 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Unidades */}
-              <div className="md:col-span-1">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500">Unidad</p>
                 <Select value={filtros.unidades} onValueChange={(v) => onFiltrosChange({ unidades: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por unidad" />
+                    <SelectValue placeholder="Unidad" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todas las unidades</SelectItem>
+                    <SelectItem value="todos">Todas</SelectItem>
                     {opciones.unidades.map((unidad) => (
                       <SelectItem key={unidad} value={unidad} className="capitalize">
                         {unidad}
@@ -271,13 +276,14 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Sección */}
-              <div className="md:col-span-1">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500">Departamento</p>
                 <Select value={filtros.seccion} onValueChange={(v) => onFiltrosChange({ seccion: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por departamento" />
+                    <SelectValue placeholder="Departamento" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todos los departamentos</SelectItem>
+                    <SelectItem value="todos">Todos</SelectItem>
                     {opciones.secciones.map((sec) => (
                       <SelectItem key={sec} value={sec}>
                         {sec}
@@ -287,29 +293,49 @@ export function ProductosTable({
                 </Select>
               </div>
 
-              {/* Filtro Estado */}
-              <div className="md:col-span-1">
+              {/* Filtro Estado (año de inventario) */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500">Estado</p>
                 <Select value={filtros.estado} onValueChange={(v) => onFiltrosChange({ estado: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por estado" />
+                    <SelectValue placeholder="Estado" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="activos">Actualizados en {anioActual}</SelectItem>
-                    <SelectItem value="inactivos">Pendientes (años anteriores)</SelectItem>
+                    <SelectItem value="activos">Actualizados {anioActual}</SelectItem>
+                    <SelectItem value="inactivos">Pendientes</SelectItem>
                     <SelectItem value="todos">Todos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro Cantidad: con stock / sin stock */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500">Cantidad</p>
+                <Select
+                  value={filtros.cantidad}
+                  onValueChange={(v) => onFiltrosChange({ cantidad: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Cantidad" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todas</SelectItem>
+                    <SelectItem value="con">Con stock</SelectItem>
+                    <SelectItem value="sin">Sin stock</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Filtro Centro de Costo - Solo visible para SuperAdmin */}
               {isSuperAdmin && opciones.centrosCosto.length > 0 && (
-                <div className="md:col-span-1">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500">Centro</p>
                   <Select value={filtros.centroCostoId} onValueChange={(v) => onFiltrosChange({ centroCostoId: v })}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Filtrar por centro" />
+                      <SelectValue placeholder="Centro" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="todos">Todos los centros</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
                       {opciones.centrosCosto.map((centro) => (
                         <SelectItem key={centro.id} value={centro.id}>
                           {centro.nombre}
@@ -322,13 +348,14 @@ export function ProductosTable({
 
               {/* Filtro Creado Por - Solo visible para admins */}
               {isAdmin && (
-                <div className="md:col-span-1">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500">Usuario</p>
                   <Select value={filtros.creadoPorId} onValueChange={(v) => onFiltrosChange({ creadoPorId: v })}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Filtrar por usuario" />
+                      <SelectValue placeholder="Usuario" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="todos">Todos los usuarios</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
                       {opciones.creadores.map((usuario) => (
                         <SelectItem key={usuario.id} value={usuario.id}>
                           {usuario.nombre}
@@ -350,11 +377,11 @@ export function ProductosTable({
                       size="sm"
                       onClick={handleClickMarcarPendientesMasivo}
                       disabled={marcandoPendientes}
-                      className="text-xs text-gray-600"
+                      className="text-xs font-semibold border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900"
                       title="Deja en rojo (pendiente) todos los productos con cantidad en 0, para empezar el conteo físico con un punto de partida claro"
                     >
-                      <ListRestart className="h-3 w-3 mr-1" />
-                      {marcandoPendientes ? 'Marcando...' : 'Iniciar Conteo Fisico'}
+                      <ListRestart className="h-3.5 w-3.5 mr-1.5" />
+                      {marcandoPendientes ? 'Marcando...' : 'Iniciar Conteo Físico'}
                     </Button>
                   )}
                 </div>
@@ -419,7 +446,7 @@ export function ProductosTable({
                     </TableHead>
                   )}
                   <TableHead className="sticky top-0 z-20 bg-green-50 text-green-700 font-semibold">
-                    Creado por
+                    Creado / Editado por
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -571,7 +598,10 @@ export function ProductosTable({
                         </TableCell>
                       )}
                       <TableCell className="bg-green-50 text-green-900 text-sm">
-                        {producto.creadoPor?.nombre || 'Sin info'}
+                        {/* Si alguien editó el producto después de creado, se
+                            muestra quién lo tocó por última vez en vez de
+                            quién lo creó originalmente. */}
+                        {producto.editadoPor?.nombre || producto.creadoPor?.nombre || 'Sin info'}
                       </TableCell>
                     </TableRow>
                   );

@@ -54,6 +54,7 @@ export async function GET(request: Request) {
     // Coincidencia exacta por referencia, usada por el flujo de "agregar cantidad"
     const referencia = searchParams.get('referencia')?.trim();
     const estado = searchParams.get('estado') || 'todos';
+    const cantidadFiltro = searchParams.get('cantidad') || 'todos'; // 'con' | 'sin' | 'todos'
     const anioActual = new Date().getFullYear();
 
     // Construir filtro según el rol
@@ -105,6 +106,13 @@ export async function GET(request: Request) {
       whereClause.anioInventario = { not: anioActual };
     }
     // 'todos' -> sin filtro por año
+
+    if (cantidadFiltro === 'con') {
+      whereClause.cantidad = { gt: 0 };
+    } else if (cantidadFiltro === 'sin') {
+      whereClause.cantidad = 0;
+    }
+    // 'todos' -> sin filtro por cantidad
 
     if (search) {
       whereClause.OR = [

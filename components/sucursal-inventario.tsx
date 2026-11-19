@@ -58,6 +58,7 @@ interface QueryState {
   creadoPorId: string;
   centroCostoId: string;
   estado: string;
+  cantidad: string;
 }
 
 interface ProductoARevisar {
@@ -93,6 +94,7 @@ export function SucursalInventario({
     creadoPorId: 'todos',
     centroCostoId: centroCosto.id, // fijo: esta vista siempre es de esta sucursal
     estado: 'todos',
+    cantidad: 'todos',
   };
 
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -145,6 +147,7 @@ export function SucursalInventario({
     if (q.seccion !== 'todos') params.set('seccion', q.seccion);
     if (q.creadoPorId !== 'todos') params.set('creadoPorId', q.creadoPorId);
     if (q.estado !== 'todos') params.set('estado', q.estado);
+    if (q.cantidad !== 'todos') params.set('cantidad', q.cantidad);
     return params.toString();
   };
 

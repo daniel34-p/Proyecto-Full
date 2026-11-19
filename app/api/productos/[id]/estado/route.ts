@@ -74,7 +74,9 @@ export async function PATCH(
       where: { id },
       data: {
         anioInventario: nuevoAnio,
-        editadoPorId: payload.userId,
+        // El superadmin no cuenta para la columna "Creado / Editado por" -
+        // ver la misma regla en app/api/productos/[id]/route.ts.
+        ...(usuario.rol !== 'superadmin' ? { editadoPorId: payload.userId } : {}),
       },
       include: {
         centroCosto: {

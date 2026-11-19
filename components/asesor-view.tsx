@@ -52,6 +52,7 @@ interface QueryState {
   creadoPorId: string;
   centroCostoId: string;
   estado: string;
+  cantidad: string;
 }
 
 const QUERY_INICIAL: QueryState = {
@@ -64,6 +65,7 @@ const QUERY_INICIAL: QueryState = {
   creadoPorId: 'todos',
   centroCostoId: 'todos',
   estado: 'todos',
+  cantidad: 'todos',
 };
 
 type Modulo = 'registrar' | 'productos' | 'alertas';
@@ -121,6 +123,7 @@ export function AsesorView() {
     if (q.seccion !== 'todos') params.set('seccion', q.seccion);
     if (q.creadoPorId !== 'todos') params.set('creadoPorId', q.creadoPorId);
     if (q.estado !== 'todos') params.set('estado', q.estado);
+    if (q.cantidad !== 'todos') params.set('cantidad', q.cantidad);
     return params.toString();
   };
 

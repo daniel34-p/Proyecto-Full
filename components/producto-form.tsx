@@ -157,6 +157,13 @@ export function ProductoForm({
     producto: string;
     embalaje?: string;
     referencia?: string;
+    // Opcional: se ejecuta recién cuando el usuario cierra este modal, no
+    // al abrirlo. Lo usa "Actualizar e Imprimir" (ver guardarProducto) para
+    // no cerrar el formulario de edición antes de tiempo - en pantallas
+    // donde ese formulario vive dentro de un modal propio (p. ej. la vista
+    // de asesor), cerrarlo de inmediato lo desmonta junto con este mismo
+    // modal de código de barras, y nunca llega a mostrarse.
+    alCerrar?: () => void;
   }>({ isOpen: false, codigo: '', producto: '' });
 
   // Estados para búsqueda por referencia
@@ -666,13 +673,16 @@ export function ProductoForm({
     }
 
     reset();
-    onSuccess(productoGuardado, isEditing);
-    if (onCancelEdit) onCancelEdit();
     setAvisoYaExisteEnMiAgencia(null);
 
-    // "Guardar e Imprimir": mismo diálogo de código de barras que se usa
-    // en la tabla de productos ("Imprimir Código"), con los datos del
-    // producto recién guardado.
+    const notificarExito = () => {
+      onSuccess(productoGuardado, isEditing);
+      if (onCancelEdit) onCancelEdit();
+    };
+
+    // "Guardar/Actualizar e Imprimir": mismo diálogo de código de barras
+    // que se usa en la tabla de productos ("Imprimir Código"), con los
+    // datos del producto recién guardado.
     if (imprimir && productoGuardado?.codigoBarras) {
       setBarcodeModal({
         isOpen: true,
@@ -680,7 +690,16 @@ export function ProductoForm({
         producto: productoGuardado.producto,
         embalaje: productoGuardado.embalaje || undefined,
         referencia: productoGuardado.referencia || undefined,
+        // Al EDITAR, se espera a que cierren este modal antes de avisar que
+        // terminó - si no, en pantallas donde el formulario de edición vive
+        // dentro de un Dialog (ver asesor-view.tsx), onSuccess/onCancelEdit
+        // cierran ese Dialog de inmediato, lo que desmonta este mismo modal
+        // de código de barras antes de que el usuario llegue a verlo.
+        alCerrar: isEditing ? notificarExito : undefined,
       });
+      if (!isEditing) notificarExito();
+    } else {
+      notificarExito();
     }
   };
 
@@ -1398,7 +1417,10 @@ export function ProductoForm({
       {/* Modal de código de barras (botón "Guardar e Imprimir") */}
       <BarcodeDisplay
         isOpen={barcodeModal.isOpen}
-        onClose={() => setBarcodeModal((prev) => ({ ...prev, isOpen: false }))}
+        onClose={() => {
+          barcodeModal.alCerrar?.();
+          setBarcodeModal((prev) => ({ ...prev, isOpen: false, alCerrar: undefined }));
+        }}
         codigo={barcodeModal.codigo}
         producto={barcodeModal.producto}
         embalaje={barcodeModal.embalaje}
