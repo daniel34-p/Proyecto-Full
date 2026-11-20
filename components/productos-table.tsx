@@ -227,9 +227,9 @@ export function ProductosTable({
 
           {/* Filtros y búsqueda */}
           <div className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:flex lg:flex-nowrap lg:items-start lg:gap-3 lg:overflow-x-auto lg:pb-1">
               {/* Búsqueda */}
-              <div className="space-y-1">
+              <div className="col-span-2 space-y-1 md:col-span-1 lg:w-48 lg:shrink-0">
                 <p className="text-xs font-medium text-gray-500">Buscar</p>
                 <Input
                   placeholder="Código, nombre..."
@@ -240,7 +240,7 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Proveedor */}
-              <div className="space-y-1">
+              <div className="space-y-1 lg:w-36 lg:shrink-0">
                 <p className="text-xs font-medium text-gray-500">Proveedor</p>
                 <Select value={filtros.proveedor} onValueChange={(v) => onFiltrosChange({ proveedor: v })}>
                   <SelectTrigger>
@@ -258,7 +258,7 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Unidades */}
-              <div className="space-y-1">
+              <div className="space-y-1 lg:w-32 lg:shrink-0">
                 <p className="text-xs font-medium text-gray-500">Unidad</p>
                 <Select value={filtros.unidades} onValueChange={(v) => onFiltrosChange({ unidades: v })}>
                   <SelectTrigger>
@@ -276,7 +276,7 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Sección */}
-              <div className="space-y-1">
+              <div className="space-y-1 lg:w-36 lg:shrink-0">
                 <p className="text-xs font-medium text-gray-500">Departamento</p>
                 <Select value={filtros.seccion} onValueChange={(v) => onFiltrosChange({ seccion: v })}>
                   <SelectTrigger>
@@ -294,7 +294,7 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Estado (año de inventario) */}
-              <div className="space-y-1">
+              <div className="space-y-1 lg:w-36 lg:shrink-0">
                 <p className="text-xs font-medium text-gray-500">Estado</p>
                 <Select value={filtros.estado} onValueChange={(v) => onFiltrosChange({ estado: v })}>
                   <SelectTrigger>
@@ -309,7 +309,7 @@ export function ProductosTable({
               </div>
 
               {/* Filtro Cantidad: con stock / sin stock */}
-              <div className="space-y-1">
+              <div className="space-y-1 lg:w-32 lg:shrink-0">
                 <p className="text-xs font-medium text-gray-500">Cantidad</p>
                 <Select
                   value={filtros.cantidad}
@@ -328,7 +328,7 @@ export function ProductosTable({
 
               {/* Filtro Centro de Costo - Solo visible para SuperAdmin */}
               {isSuperAdmin && opciones.centrosCosto.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-1 lg:w-36 lg:shrink-0">
                   <p className="text-xs font-medium text-gray-500">Centro</p>
                   <Select value={filtros.centroCostoId} onValueChange={(v) => onFiltrosChange({ centroCostoId: v })}>
                     <SelectTrigger>
@@ -348,7 +348,7 @@ export function ProductosTable({
 
               {/* Filtro Creado Por - Solo visible para admins */}
               {isAdmin && (
-                <div className="space-y-1">
+                <div className="space-y-1 lg:w-36 lg:shrink-0">
                   <p className="text-xs font-medium text-gray-500">Usuario</p>
                   <Select value={filtros.creadoPorId} onValueChange={(v) => onFiltrosChange({ creadoPorId: v })}>
                     <SelectTrigger>

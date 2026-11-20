@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useState, useEffect, useId } from 'react';
-import { Plus, Search, X, PackagePlus, ChevronRight, Printer, AlertTriangle } from 'lucide-react';
+import { Plus, Search, X, PackagePlus, PackageMinus, ChevronRight, Printer, AlertTriangle } from 'lucide-react';
 import { OpcionesConfig } from '@/components/opciones-config';
 import { BarcodeDisplay } from '@/components/barcode-display';
 import { useAuth } from '@/lib/auth-context';
@@ -173,6 +173,10 @@ export function ProductoForm({
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [cantidadAgregar, setCantidadAgregar] = useState('');
   const [modoAgregar, setModoAgregar] = useState(false);
+  // 'sumar' = entrada de mercancía (comportamiento original), 'restar' =
+  // descuento por venta. Mismo buscador y mismo producto seleccionado, solo
+  // cambia el signo de la operación sobre la cantidad actual.
+  const [operacionCantidad, setOperacionCantidad] = useState<'sumar' | 'restar'>('sumar');
 
   // Estados para el apartado de "Reimprimir Etiqueta": búsqueda por
   // referencia independiente de la de "Agregar Cantidad" de arriba. Como
@@ -378,6 +382,7 @@ export function ProductoForm({
     setError('');
     setProductosEncontrados([]);
     setProductoSeleccionado(null);
+    setOperacionCantidad('sumar');
 
     try {
       const token = localStorage.getItem('token');
@@ -486,11 +491,28 @@ export function ProductoForm({
     setBuscoEtiqueta(false);
   };
 
-  // Agregar cantidad al producto encontrado
+  // Agregar o descontar cantidad al producto encontrado, según
+  // operacionCantidad ('sumar' = entrada de mercancía, 'restar' = venta).
   const agregarCantidad = async () => {
     if (!productoSeleccionado) return;
     if (!cantidadAgregar || parseFloat(cantidadAgregar) <= 0) {
-      setError('Ingresa una cantidad válida para agregar');
+      setError(
+        operacionCantidad === 'sumar'
+          ? 'Ingresa una cantidad válida para agregar'
+          : 'Ingresa una cantidad válida para descontar'
+      );
+      return;
+    }
+
+    const cantidadActual = parseFloat(productoSeleccionado.cantidad.toString());
+    const cantidadInput = parseFloat(cantidadAgregar);
+    const nuevaCantidad =
+      operacionCantidad === 'sumar' ? cantidadActual + cantidadInput : cantidadActual - cantidadInput;
+
+    if (operacionCantidad === 'restar' && nuevaCantidad < 0) {
+      setError(
+        `No puedes descontar más de lo que hay en stock (cantidad actual: ${cantidadActual} ${productoSeleccionado.unidades})`
+      );
       return;
     }
 
@@ -499,8 +521,6 @@ export function ProductoForm({
     setSessionExpired(false);
 
     try {
-      const nuevaCantidad = parseFloat(productoSeleccionado.cantidad.toString()) + parseFloat(cantidadAgregar);
-
       const token = localStorage.getItem('token');
       const response = await fetch(`/api/productos/${productoSeleccionado.id}`, {
         method: 'PUT',
@@ -544,7 +564,8 @@ export function ProductoForm({
       setProductoSeleccionado(null);
       setCantidadAgregar('');
       setModoAgregar(false);
-      
+      setOperacionCantidad('sumar');
+
       onSuccess(productoActualizado, true);
     } catch (err: any) {
       setError(err.message);
@@ -560,6 +581,7 @@ export function ProductoForm({
     setProductoSeleccionado(null);
     setCantidadAgregar('');
     setModoAgregar(false);
+    setOperacionCantidad('sumar');
     setError('');
   };
 
@@ -722,7 +744,13 @@ export function ProductoForm({
       <Card>
         <CardHeader>
           <CardTitle>
-            {modoAgregar ? '📦 Agregar Cantidad' : isEditing ? 'Editar Producto' : 'Nuevo Producto'}
+            {modoAgregar
+              ? operacionCantidad === 'sumar'
+                ? '📦 Agregar Cantidad'
+                : '🛒 Descontar Cantidad (Venta)'
+              : isEditing
+              ? 'Editar Producto'
+              : 'Nuevo Producto'}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -733,7 +761,7 @@ export function ProductoForm({
                 <h3 className="font-semibold text-blue-900 mb-2">
                   Se encontraron {productosEncontrados.length} productos con la referencia "{searchRef}"
                 </h3>
-                <p className="text-sm text-blue-700">Selecciona el producto al que quieres agregar cantidad:</p>
+                <p className="text-sm text-blue-700">Selecciona el producto al que quieres agregar o descontar cantidad:</p>
               </div>
 
               {/* Lista de productos encontrados */}
@@ -791,9 +819,39 @@ export function ProductoForm({
                 </div>
               </div>
 
-              {/* Input para agregar cantidad */}
+              {/* Elegir si es entrada (suma) o venta (resta) */}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() => setOperacionCantidad('sumar')}
+                  className={`flex-1 ${
+                    operacionCantidad === 'sumar'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <PackagePlus className="h-4 w-4 mr-2" />
+                  Entrada (Agregar)
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setOperacionCantidad('restar')}
+                  className={`flex-1 ${
+                    operacionCantidad === 'restar'
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <PackageMinus className="h-4 w-4 mr-2" />
+                  Venta (Descontar)
+                </Button>
+              </div>
+
+              {/* Input para agregar/descontar cantidad */}
               <div className="space-y-2">
-                <Label htmlFor="cantidadAgregar">Cantidad a Agregar *</Label>
+                <Label htmlFor="cantidadAgregar">
+                  {operacionCantidad === 'sumar' ? 'Cantidad a Agregar' : 'Cantidad a Descontar'} *
+                </Label>
                 <Input
                   id="cantidadAgregar"
                   type="number"
@@ -804,7 +862,20 @@ export function ProductoForm({
                   className="text-lg"
                 />
                 <p className="text-xs text-gray-500">
-                  Nueva cantidad será: <strong>{productoSeleccionado.cantidad + (parseFloat(cantidadAgregar) || 0)} {productoSeleccionado.unidades}</strong>
+                  Nueva cantidad será:{' '}
+                  <strong
+                    className={
+                      operacionCantidad === 'restar' &&
+                      productoSeleccionado.cantidad - (parseFloat(cantidadAgregar) || 0) < 0
+                        ? 'text-red-600'
+                        : ''
+                    }
+                  >
+                    {operacionCantidad === 'sumar'
+                      ? productoSeleccionado.cantidad + (parseFloat(cantidadAgregar) || 0)
+                      : productoSeleccionado.cantidad - (parseFloat(cantidadAgregar) || 0)}{' '}
+                    {productoSeleccionado.unidades}
+                  </strong>
                 </p>
               </div>
 
@@ -831,13 +902,23 @@ export function ProductoForm({
 
               {/* Botones */}
               <div className="flex flex-col sm:flex-row gap-2">
-                <Button 
-                  onClick={agregarCantidad} 
+                <Button
+                  onClick={agregarCantidad}
                   disabled={isSubmitting || !cantidadAgregar}
-                  className="flex-1 w-full"
+                  className={`flex-1 w-full ${operacionCantidad === 'restar' ? 'bg-red-600 hover:bg-red-700' : ''}`}
                 >
-                  <PackagePlus className="h-4 w-4 mr-2" />
-                  {isSubmitting ? 'Agregando...' : 'Agregar Cantidad'}
+                  {operacionCantidad === 'sumar' ? (
+                    <PackagePlus className="h-4 w-4 mr-2" />
+                  ) : (
+                    <PackageMinus className="h-4 w-4 mr-2" />
+                  )}
+                  {isSubmitting
+                    ? operacionCantidad === 'sumar'
+                      ? 'Agregando...'
+                      : 'Descontando...'
+                    : operacionCantidad === 'sumar'
+                    ? 'Agregar Cantidad'
+                    : 'Descontar Cantidad'}
                 </Button>
                 <Button 
                   type="button" 
@@ -860,7 +941,7 @@ export function ProductoForm({
                   🔍 Buscar por Referencia
                 </Label>
                 <p className="text-xs text-blue-700 mb-3">
-                  Si el producto ya existe, podrás agregar cantidad directamente
+                  Si el producto ya existe, podrás agregar o descontar cantidad directamente
                 </p>
                 <div className="flex gap-2">
                   <Input
