@@ -5,6 +5,7 @@ import { ProductoForm } from '@/components/producto-form';
 import { ProductosTable } from '@/components/productos-table';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ScannedProductView } from '@/components/scanned-product-view';
+import { EscaneoRapidoView } from '@/components/escaneo-rapido';
 import { CentroCostoMenu } from '@/components/centro-costo-menu';
 import {
   Dialog,
@@ -15,9 +16,8 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { HistorialAlertasView, AlertaHistorial } from '@/components/historial-alertas-view';
-import { useAlertasPendientes } from '@/lib/use-alertas-pendientes';
-import { Camera, Building2, PackagePlus, List, History } from 'lucide-react';
+import { ProximamenteModulo } from '@/components/proximamente-modulo';
+import { Camera, Building2, PackagePlus, List, History, ScanLine } from 'lucide-react';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
 
 interface Producto {
@@ -68,17 +68,17 @@ const QUERY_INICIAL: QueryState = {
   cantidad: 'todos',
 };
 
-type Modulo = 'registrar' | 'productos' | 'alertas';
+type Modulo = 'registrar' | 'productos' | 'alertas' | 'escaneoRapido';
 
 export function AsesorView() {
   const { user, logout, centrosCosto, centroCostoActivo, setCentroCostoActivo } = useAuth();
-  const alertasPendientes = useAlertasPendientes();
   const [modulo, setModulo] = useState<Modulo>('registrar');
 
   const MODULOS = [
     { id: 'registrar', label: 'Registrar Producto', icon: <PackagePlus className="h-4 w-4" /> },
     { id: 'productos', label: 'Ver Productos', icon: <List className="h-4 w-4" /> },
-    { id: 'alertas', label: 'Alertas', icon: <History className="h-4 w-4" />, badge: alertasPendientes },
+    { id: 'alertas', label: 'Alertas', icon: <History className="h-4 w-4" /> },
+    { id: 'escaneoRapido', label: 'Escaneo Rápido', icon: <ScanLine className="h-4 w-4" /> },
   ];
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -230,32 +230,6 @@ export function AsesorView() {
     setTimeout(() => setShowSuccessMessage(false), 3000);
   };
 
-  // Viene del botón "Revisar" de Alertas: trae el producto completo (la
-  // alerta solo guarda un resumen liviano) y abre el mismo modal de
-  // edición de siempre, con el campo resaltado.
-  const handleRevisarDesdeHistorial = async (alerta: AlertaHistorial) => {
-    if (!alerta.producto) return;
-    try {
-      const response = await fetch(`/api/productos/${encodeURIComponent(alerta.producto.id)}`, {
-        headers: authHeaders(),
-      });
-      if (!response.ok) {
-        alert('No se pudo cargar el producto. Puede que ya no exista.');
-        return;
-      }
-      const producto = await response.json();
-      setProductoToEdit(producto);
-      setAdvertenciaCampos({
-        campos: ['costo', 'precioVenta'],
-        mensaje: 'El precio de venta quedó por debajo del costo. Revisa ambos valores.',
-      });
-      setEditModalOpen(true);
-    } catch (error) {
-      console.error('Error al cargar producto desde el historial:', error);
-      alert('Error al cargar el producto');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b">
@@ -345,8 +319,12 @@ export function AsesorView() {
       ) : modulo === 'alertas' ? (
         <main className="p-4 sm:p-6 lg:p-8">
           <div className="max-w-7xl mx-auto">
-            <HistorialAlertasView onRevisarProducto={handleRevisarDesdeHistorial} />
+            <ProximamenteModulo titulo="Alertas" />
           </div>
+        </main>
+      ) : modulo === 'escaneoRapido' ? (
+        <main className="p-4 sm:p-6 lg:p-8">
+          <EscaneoRapidoView onUpdate={() => fetchProductos(queryState)} />
         </main>
       ) : (
         <main className="p-4 sm:p-6 lg:p-8">

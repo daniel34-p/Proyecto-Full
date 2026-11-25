@@ -7,11 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UsuariosTable } from '@/components/usuarios-table';
 import { UsuarioForm } from '@/components/usuario-form';
 import { SucursalesView } from '@/components/sucursales-view';
-import { HistorialAlertasView, AlertaHistorial } from '@/components/historial-alertas-view';
-import { MovimientosInventarioView, Movimiento } from '@/components/movimientos-inventario-view';
-import { useAlertasPendientes } from '@/lib/use-alertas-pendientes';
-import { useMovimientosPendientes } from '@/lib/use-movimientos-pendientes';
-import { UserPlus, Users, Building2, Menu, X, History, ArrowUpDown } from 'lucide-react';
+import { EscaneoRapidoView } from '@/components/escaneo-rapido';
+import { ProximamenteModulo } from '@/components/proximamente-modulo';
+import { UserPlus, Users, Building2, Menu, X, History, ArrowUpDown, ScanLine } from 'lucide-react';
 
 interface Usuario {
   id: string;
@@ -26,12 +24,10 @@ interface Usuario {
   };
 }
 
-type VistaActiva = 'usuarios' | 'sucursales' | 'alertas' | 'movimientos';
+type VistaActiva = 'usuarios' | 'sucursales' | 'alertas' | 'movimientos' | 'escaneoRapido';
 
 export function SuperAdminView() {
   const { user, logout } = useAuth();
-  const alertasPendientes = useAlertasPendientes();
-  const movimientosPendientes = useMovimientosPendientes();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -49,37 +45,6 @@ export function SuperAdminView() {
     campos: Array<'costo' | 'precioVenta'>;
     mensaje: string;
   } | null>(null);
-
-  const handleRevisarDesdeHistorial = (alerta: AlertaHistorial) => {
-    if (!alerta.producto || !alerta.centroCosto) {
-      alert('No se puede abrir este producto: falta la sucursal o el producto ya no existe.');
-      return;
-    }
-    setProductoARevisar({
-      centroCosto: alerta.centroCosto,
-      productoId: alerta.producto.id,
-      campos: ['costo', 'precioVenta'],
-      mensaje: 'El precio de venta quedó por debajo del costo. Revisa ambos valores.',
-    });
-    setVistaActiva('sucursales');
-  };
-
-  // Viene del botón "Revisar" de Movimientos: igual patrón, pero
-  // resaltando solo "costo" - no hay nada que corregir, es solo para que
-  // el superadmin confirme que el cambio es correcto.
-  const handleRevisarDesdeMovimiento = (movimiento: Movimiento) => {
-    if (!movimiento.productoId || !movimiento.centroCosto) {
-      alert('No se puede abrir este producto: falta la sucursal o el producto ya no existe.');
-      return;
-    }
-    setProductoARevisar({
-      centroCosto: movimiento.centroCosto,
-      productoId: movimiento.productoId,
-      campos: ['costo'],
-      mensaje: 'Este producto tuvo un cambio de costo registrado en Movimientos. Verifica que esté correcto.',
-    });
-    setVistaActiva('sucursales');
-  };
 
   const fetchUsuarios = async () => {
     try {
@@ -295,11 +260,6 @@ export function SuperAdminView() {
           >
             <History className="h-4 w-4" />
             Alertas
-            {alertasPendientes > 0 && (
-              <span className="h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center">
-                {alertasPendientes > 99 ? '99+' : alertasPendientes}
-              </span>
-            )}
           </button>
           <button
             onClick={() => irAVista('movimientos')}
@@ -311,11 +271,17 @@ export function SuperAdminView() {
           >
             <ArrowUpDown className="h-4 w-4" />
             Movimientos
-            {movimientosPendientes > 0 && (
-              <span className="h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center">
-                {movimientosPendientes > 99 ? '99+' : movimientosPendientes}
-              </span>
-            )}
+          </button>
+          <button
+            onClick={() => irAVista('escaneoRapido')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              vistaActiva === 'escaneoRapido'
+                ? 'bg-purple-50 text-purple-700'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ScanLine className="h-4 w-4" />
+            Escaneo Rápido
           </button>
         </nav>
       </aside>
@@ -404,13 +370,11 @@ export function SuperAdminView() {
           />
         )}
 
-        {vistaActiva === 'alertas' && (
-          <HistorialAlertasView onRevisarProducto={handleRevisarDesdeHistorial} />
-        )}
+        {vistaActiva === 'alertas' && <ProximamenteModulo titulo="Alertas" />}
 
-        {vistaActiva === 'movimientos' && (
-          <MovimientosInventarioView onRevisarProducto={handleRevisarDesdeMovimiento} />
-        )}
+        {vistaActiva === 'movimientos' && <ProximamenteModulo titulo="Movimientos" />}
+
+        {vistaActiva === 'escaneoRapido' && <EscaneoRapidoView />}
       </main>
 
       {/* Modal de formulario de usuario */}

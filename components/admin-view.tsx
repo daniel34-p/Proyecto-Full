@@ -9,14 +9,12 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ScannedProductView } from '@/components/scanned-product-view';
+import { EscaneoRapidoView } from '@/components/escaneo-rapido';
 import { ImportarExcel } from '@/components/importar-excel';
-import { HistorialAlertasView, AlertaHistorial } from '@/components/historial-alertas-view';
-import { MovimientosInventarioView, Movimiento } from '@/components/movimientos-inventario-view';
-import { Camera, Download, Building2, Loader2, Package, History, ArrowUpDown } from 'lucide-react';
+import { ProximamenteModulo } from '@/components/proximamente-modulo';
+import { Camera, Download, Building2, Loader2, Package, History, ArrowUpDown, ScanLine } from 'lucide-react';
 import { exportarInventarioPorAgencia } from '@/lib/excel-export';
 import { getCentroCostoColor } from '@/lib/centro-costo-colors';
-import { useAlertasPendientes } from '@/lib/use-alertas-pendientes';
-import { useMovimientosPendientes } from '@/lib/use-movimientos-pendientes';
 
 interface Producto {
   id: string;
@@ -67,7 +65,7 @@ const QUERY_INICIAL: QueryState = {
 };
 
 export function AdminView() {
-  const [vistaActiva, setVistaActiva] = useState<'productos' | 'alertas' | 'movimientos'>('productos');
+  const [vistaActiva, setVistaActiva] = useState<'productos' | 'alertas' | 'movimientos' | 'escaneoRapido'>('productos');
   const [productos, setProductos] = useState<Producto[]>([]);
   const [paginacion, setPaginacion] = useState({ page: 1, pageSize: 50, total: 0, totalPages: 1 });
   const [queryState, setQueryState] = useState<QueryState>(QUERY_INICIAL);
@@ -102,8 +100,6 @@ export function AdminView() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Producto | null>(null);
   const { user, logout, centrosCosto, centroCostoActivo, setCentroCostoActivo } = useAuth();
-  const alertasPendientes = useAlertasPendientes();
-  const movimientosPendientes = useMovimientosPendientes();
 
   const authHeaders = () => {
     const token = localStorage.getItem('token');
@@ -323,60 +319,6 @@ export function AdminView() {
     }
   };
 
-  // Viene del botón "Revisar" de Alertas: trae el producto completo (la
-  // alerta solo guarda un resumen liviano) y abre el mismo formulario de
-  // edición de siempre, con el campo correspondiente resaltado.
-  const handleRevisarDesdeHistorial = async (alerta: AlertaHistorial) => {
-    if (!alerta.producto) return;
-    try {
-      const response = await fetch(`/api/productos/${encodeURIComponent(alerta.producto.id)}`, {
-        headers: authHeaders(),
-      });
-      if (!response.ok) {
-        alert('No se pudo cargar el producto. Puede que ya no exista.');
-        return;
-      }
-      const producto = await response.json();
-      setVistaActiva('productos');
-      setProductoToEdit(producto);
-      setAdvertenciaCampos({
-        campos: ['costo', 'precioVenta'],
-        mensaje: 'El precio de venta quedó por debajo del costo. Revisa ambos valores.',
-      });
-      setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-    } catch (error) {
-      console.error('Error al cargar producto desde alertas:', error);
-      alert('Error al cargar el producto');
-    }
-  };
-
-  // Viene del botón "Revisar" de Movimientos: igual patrón que Alertas,
-  // pero resaltando solo el campo "costo" - no hay nada que "corregir",
-  // es solo para que el administrador confirme que el cambio es correcto.
-  const handleRevisarDesdeMovimiento = async (movimiento: Movimiento) => {
-    if (!movimiento.productoId) return;
-    try {
-      const response = await fetch(`/api/productos/${encodeURIComponent(movimiento.productoId)}`, {
-        headers: authHeaders(),
-      });
-      if (!response.ok) {
-        alert('No se pudo cargar el producto. Puede que ya no exista.');
-        return;
-      }
-      const producto = await response.json();
-      setVistaActiva('productos');
-      setProductoToEdit(producto);
-      setAdvertenciaCampos({
-        campos: ['costo'],
-        mensaje: 'Este producto tuvo un cambio de costo registrado en Movimientos. Verifica que esté correcto.',
-      });
-      setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-    } catch (error) {
-      console.error('Error al cargar producto desde movimientos:', error);
-      alert('Error al cargar el producto');
-    }
-  };
-
   const handleExportar = async () => {
     setExportando(true);
     try {
@@ -454,38 +396,33 @@ export function AdminView() {
                   <Package className="h-4 w-4" />
                   <span className="hidden sm:inline">Productos</span>
                 </Button>
-                <div className="relative">
-                  <Button
-                    variant={vistaActiva === 'alertas' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setVistaActiva('alertas')}
-                    className="flex items-center gap-2"
-                  >
-                    <History className="h-4 w-4" />
-                    <span className="hidden sm:inline">Alertas</span>
-                  </Button>
-                  {alertasPendientes > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center pointer-events-none">
-                      {alertasPendientes > 99 ? '99+' : alertasPendientes}
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <Button
-                    variant={vistaActiva === 'movimientos' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setVistaActiva('movimientos')}
-                    className="flex items-center gap-2"
-                  >
-                    <ArrowUpDown className="h-4 w-4" />
-                    <span className="hidden sm:inline">Movimientos</span>
-                  </Button>
-                  {movimientosPendientes > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center pointer-events-none">
-                      {movimientosPendientes > 99 ? '99+' : movimientosPendientes}
-                    </span>
-                  )}
-                </div>
+                <Button
+                  variant={vistaActiva === 'alertas' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setVistaActiva('alertas')}
+                  className="flex items-center gap-2"
+                >
+                  <History className="h-4 w-4" />
+                  <span className="hidden sm:inline">Alertas</span>
+                </Button>
+                <Button
+                  variant={vistaActiva === 'movimientos' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setVistaActiva('movimientos')}
+                  className="flex items-center gap-2"
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                  <span className="hidden sm:inline">Movimientos</span>
+                </Button>
+                <Button
+                  variant={vistaActiva === 'escaneoRapido' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setVistaActiva('escaneoRapido')}
+                  className="flex items-center gap-2"
+                >
+                  <ScanLine className="h-4 w-4" />
+                  <span className="hidden sm:inline">Escaneo Rápido</span>
+                </Button>
               </div>
 
               {vistaActiva === 'productos' && (
@@ -533,9 +470,16 @@ export function AdminView() {
       <main className="p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
           {vistaActiva === 'alertas' ? (
-            <HistorialAlertasView onRevisarProducto={handleRevisarDesdeHistorial} />
+            <ProximamenteModulo titulo="Alertas" />
           ) : vistaActiva === 'movimientos' ? (
-            <MovimientosInventarioView onRevisarProducto={handleRevisarDesdeMovimiento} />
+            <ProximamenteModulo titulo="Movimientos" />
+          ) : vistaActiva === 'escaneoRapido' ? (
+            <EscaneoRapidoView
+              onUpdate={() => {
+                fetchProductos(queryState);
+                fetchEstadisticas();
+              }}
+            />
           ) : (
             <>
               <InventoryStats estadisticas={estadisticas} loading={loadingStats} />

@@ -51,6 +51,7 @@ export async function GET(request: Request) {
         referencia: true,
         producto: true,
         cantidad: true,
+        cantidadDanada: true,
         unidades: true,
         costo: true,
         precioVenta: true,
