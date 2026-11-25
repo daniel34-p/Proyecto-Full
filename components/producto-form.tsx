@@ -148,6 +148,12 @@ export function ProductoForm({
   const [secciones, setSecciones] = useState<string[]>(['SESGOS', 'HILOS', 'ENTRETELAS', 'CIERRES', 'REATAS',
         'HERRAJES', 'NAVIDAD', 'MILLARES','ADORNOS', 'CACHARRERIA', 'ELASTICO', 'CORDONES', 'BISUTERIA', 'CINTAS', 'BOTONES',
         'ENCAJES', 'VARIOS', 'APLIQUES']);
+  // Si esta agencia tiene permiso para crear NUEVOS departamentos (lo
+  // habilita el superadmin desde "Gestionar Centros de Costo") - controla
+  // si se muestra el botón "Gestionar Departamentos". Arranca en false
+  // (el default real) hasta que responda el GET de abajo, para no mostrar
+  // el botón un instante de más mientras carga.
+  const [puedeCrearDepartamentos, setPuedeCrearDepartamentos] = useState(false);
   const isEditing = !!productoToEdit;
 
   // Modal de código de barras para el botón "Guardar e Imprimir"
@@ -244,6 +250,7 @@ export function ProductoForm({
         setProveedores(data.proveedores);
         setUnidades(data.unidades);
         setSecciones(sinDepartamentoRetirado(data.secciones));
+        setPuedeCrearDepartamentos(!!data.puedeCrearDepartamentos);
       } catch (error) {
         console.error('Error al cargar opciones del catálogo:', error);
       }
@@ -684,7 +691,7 @@ export function ProductoForm({
         const respOpcion = await fetch('/api/opciones', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
-          body: JSON.stringify({ tipo: 'secciones', valor: productoGuardado.seccion }),
+          body: JSON.stringify({ tipo: 'secciones', valor: productoGuardado.seccion, centroCostoId: centroActivoId }),
         });
         if (respOpcion.ok) {
           setSecciones((prev) => (prev.includes(productoGuardado.seccion) ? prev : [...prev, productoGuardado.seccion]));
@@ -1309,25 +1316,41 @@ export function ProductoForm({
                   {/* Sección */}
                   <div className="space-y-2">
                     <Label htmlFor="seccion">Departamento *</Label>
-                    <Select
-                      value={watch('seccion') || ''}
-                      // Ver comentario en el Select de Proveedor: ignora
-                      // notificaciones con valor vacío de Radix.
-                      onValueChange={(value) => value && setValue('seccion', value)}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Selecciona un departamento">
-                          {watch('seccion') || undefined}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {conValorAsegurado(secciones, watch('seccion')).map((sec) => (
-                          <SelectItem key={sec} value={sec}>
-                            {sec}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select
+                        value={watch('seccion') || ''}
+                        // Ver comentario en el Select de Proveedor: ignora
+                        // notificaciones con valor vacío de Radix.
+                        onValueChange={(value) => value && setValue('seccion', value)}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Selecciona un departamento">
+                            {watch('seccion') || undefined}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {conValorAsegurado(secciones, watch('seccion')).map((sec) => (
+                            <SelectItem key={sec} value={sec}>
+                              {sec}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {/* Solo si el superadmin habilitó esta agencia para
+                          crear departamentos nuevos (ver puedeCrearDepartamentos
+                          en schema.prisma) - si no, el botón ni se muestra. */}
+                      {puedeCrearDepartamentos && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setConfigModal('secciones')}
+                          title="Gestionar departamentos"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                     {errors.seccion && (
                       <p className="text-sm text-red-500">{errors.seccion.message}</p>
                     )}

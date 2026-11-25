@@ -50,6 +50,9 @@ interface Producto {
   embalaje?: string;
   anioInventario: number;
   createdAt: string;
+  // Cuándo pasó de cantidad 0 a una cantidad positiva por última vez (ver
+  // ultimoConteoAt en schema.prisma) - null si nunca tuvo esa transición.
+  ultimoConteoAt?: string | null;
   centroCosto?: {
     id: string;
     nombre: string;
@@ -108,6 +111,20 @@ interface ProductosTableProps {
   opciones: OpcionesFiltro;
   paginacion: Paginacion;
   onPageChange: (page: number) => void;
+}
+
+// "HOY" se calcula al vuelo comparando el día calendario local, nunca se
+// guarda como booleano - así se "reinicia" solo al cambiar de día, sin
+// ningún job ni limpieza manual.
+function esConteoDeHoy(fecha?: string | null): boolean {
+  if (!fecha) return false;
+  const d = new Date(fecha);
+  const ahora = new Date();
+  return (
+    d.getFullYear() === ahora.getFullYear() &&
+    d.getMonth() === ahora.getMonth() &&
+    d.getDate() === ahora.getDate()
+  );
 }
 
 export function ProductosTable({
@@ -524,7 +541,16 @@ export function ProductosTable({
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
-                      <TableCell className={`font-medium lg:sticky lg:left-24 lg:z-10 ${stickyColClass}`}>{producto.referencia}</TableCell>
+                      <TableCell className={`font-medium lg:sticky lg:left-24 lg:z-10 ${stickyColClass}`}>
+                        <div className="flex flex-col gap-0.5">
+                          {esConteoDeHoy(producto.ultimoConteoAt) && (
+                            <span className="text-[10px] font-bold text-red-600 animate-pulse leading-none">
+                              HOY
+                            </span>
+                          )}
+                          {producto.referencia}
+                        </div>
+                      </TableCell>
                       <TableCell>{producto.producto}</TableCell>
                       <TableCell className="capitalize">{producto.proveedor}</TableCell>
                       <TableCell>

@@ -12,6 +12,15 @@ model CentroCosto {
   id        String   @id @default(cuid())
   nombre    String   @unique
   activo    Boolean  @default(true)
+
+  // Permiso granular que activa el superadmin desde "Gestionar Centros de
+  // Costo": si esta agencia puede agregar NUEVOS departamentos al catálogo
+  // global (tipo 'secciones' en OpcionCatalogo), además de los que ya
+  // existen. Por defecto NINGUNA agencia puede - se habilita agencia por
+  // agencia (ver app/api/opciones/route.ts, que es quien de verdad lo hace
+  // cumplir; esto es solo el dato).
+  puedeCrearDepartamentos Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -112,6 +121,17 @@ model Producto {
   // agotados, etc.) dejan de sumar sin necesidad de eliminarlos.
   anioInventario Int          @default(2025)
 
+  // Marca cuándo este producto pasó de cantidad 0 a una cantidad positiva
+  // por última vez (ver app/api/productos/[id]/route.ts) - es el momento en
+  // que "se cuenta" en el inventario físico, a diferencia de un simple
+  // ajuste de stock (sumar/restar) sobre un producto que ya tenía cantidad.
+  // Null = nunca ha tenido esa transición. Sirve para (1) ordenar la tabla
+  // poniendo esos productos primero, del más reciente al más antiguo, y
+  // (2) mostrar la etiqueta "HOY" mientras siga siendo el mismo día (se
+  // calcula al vuelo comparando con la fecha actual - no hay que reiniciar
+  // nada manualmente).
+  ultimoConteoAt DateTime?
+
   // Centro de Costo - OPCIONAL al inicio para la migración
   centroCostoId  String?
   centroCosto    CentroCosto? @relation(fields: [centroCostoId], references: [id])
@@ -142,6 +162,8 @@ model Producto {
   @@index([activo])
   @@index([anioInventario])
   @@index([centroCostoId, anioInventario]) // La combinación que más se consulta
+  @@index([ultimoConteoAt]) // Orden "contados hoy primero" (superadmin, sin centro)
+  @@index([centroCostoId, ultimoConteoAt]) // Mismo orden pero filtrado por centro de costo (admin/asesor)
 }
 
 // Alertas: se inserta una fila SOLO cuando el precio de venta queda por

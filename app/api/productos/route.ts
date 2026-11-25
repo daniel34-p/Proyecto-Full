@@ -151,7 +151,13 @@ export async function GET(request: Request) {
     let [productos, total] = await Promise.all([
       prisma.producto.findMany({
         where: whereClause,
+        // Los productos que acaban de pasar de cantidad 0 a una cantidad
+        // positiva (ver ultimoConteoAt en schema.prisma) van primero, del
+        // más reciente al más antiguo - un simple ajuste de stock sobre un
+        // producto que ya tenía cantidad no cambia este orden. El resto
+        // cae al orden de siempre (más nuevo primero).
         orderBy: [
+          { ultimoConteoAt: { sort: 'desc', nulls: 'last' } },
           { createdAt: 'desc' },
           { id: 'desc' },
         ],
@@ -171,6 +177,7 @@ export async function GET(request: Request) {
         prisma.producto.findMany({
           where: whereFallback,
           orderBy: [
+            { ultimoConteoAt: { sort: 'desc', nulls: 'last' } },
             { createdAt: 'desc' },
             { id: 'desc' },
           ],

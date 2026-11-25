@@ -87,6 +87,10 @@ export async function PUT(
       data: {
         nombre: body.nombre || centroExistente.nombre,
         activo: body.activo !== undefined ? body.activo : centroExistente.activo,
+        puedeCrearDepartamentos:
+          body.puedeCrearDepartamentos !== undefined
+            ? body.puedeCrearDepartamentos
+            : centroExistente.puedeCrearDepartamentos,
       },
       include: {
         _count: {

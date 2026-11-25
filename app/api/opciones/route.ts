@@ -13,16 +13,17 @@ function esTipoValido(valor: unknown): valor is Tipo {
 // Catálogo de opciones personalizadas para los desplegables del formulario
 // de productos:
 // - 'secciones' (departamento): GLOBAL, igual para todos los centros de
-//   costo - no depende de a qué centro(s) tenga acceso el usuario.
+//   costo - se LEE sin depender de a qué centro(s) tenga acceso el
+//   usuario, pero CREAR uno nuevo sí depende del centro activo (ver
+//   "puedeCrearDepartamentos" más abajo).
 // - 'proveedores' y 'unidades': propios de CADA centro de costo - un
 //   usuario solo puede ver/crear/borrar los del centro al que tiene acceso
 //   (o cualquiera, si es superadmin), igual que ya pasa con los productos.
 //
-// Por eso, a diferencia de 'secciones', estas dos rutas sí necesitan saber
-// quién es el usuario y a qué centros tiene acceso - una sola consulta de
-// usuario (con sus relaciones ya incluidas), reusando el mismo patrón que
-// el resto de la API para no repetirla.
-async function usuarioTieneAccesoAlCentro(usuarioId: string, centroCostoId: string): Promise<boolean> {
+// Por eso estas rutas necesitan saber quién es el usuario y a qué centros
+// tiene acceso - una sola consulta de usuario (con sus relaciones ya
+// incluidas), reusada por los tres tipos para no repetirla.
+async function obtenerUsuarioYAcceso(usuarioId: string, centroCostoId: string) {
   const usuario = await prisma.usuario.findUnique({
     where: { id: usuarioId },
     include: {
@@ -30,16 +31,18 @@ async function usuarioTieneAccesoAlCentro(usuarioId: string, centroCostoId: stri
       centrosCostoAdicionales: { include: { centroCosto: true } },
     },
   });
-  if (!usuario) return false;
-  if (usuario.rol === 'superadmin') return true;
+  if (!usuario) return { usuario: null, tieneAcceso: false };
+  if (usuario.rol === 'superadmin') return { usuario, tieneAcceso: true };
 
   const centros = derivarCentrosDeUsuario(usuario);
-  return centros.some((c) => c.id === centroCostoId);
+  return { usuario, tieneAcceso: centros.some((c) => c.id === centroCostoId) };
 }
 
 // GET - Trae los 3 catálogos juntos: 'secciones' siempre completo (global),
 // y 'proveedores'/'unidades' solo los del centro indicado en
-// ?centroCostoId=. Una sola consulta a la base de datos.
+// ?centroCostoId=. También informa si ESTE centro puede crear nuevos
+// departamentos (ver puedeCrearDepartamentos en schema.prisma) - el
+// superadmin siempre puede. Dos consultas, en paralelo.
 export async function GET(request: Request) {
   try {
     const token = extractTokenFromHeader(request.headers.get('authorization'));
@@ -55,18 +58,32 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Debe indicar el centro de costo' }, { status: 400 });
     }
 
-    const tieneAcceso = await usuarioTieneAccesoAlCentro(payload.userId, centroCostoId);
+    const { usuario, tieneAcceso } = await obtenerUsuarioYAcceso(payload.userId, centroCostoId);
+    if (!usuario) {
+      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
+    }
     if (!tieneAcceso) {
       return NextResponse.json({ error: 'No tienes acceso a ese centro de costo' }, { status: 403 });
     }
 
-    const opciones = await prisma.opcionCatalogo.findMany({
-      where: { OR: [{ tipo: 'secciones' }, { centroCostoId }] },
-      orderBy: [{ tipo: 'asc' }, { valor: 'asc' }],
-      select: { tipo: true, valor: true },
-    });
+    const [opciones, centro] = await Promise.all([
+      prisma.opcionCatalogo.findMany({
+        where: { OR: [{ tipo: 'secciones' }, { centroCostoId }] },
+        orderBy: [{ tipo: 'asc' }, { valor: 'asc' }],
+        select: { tipo: true, valor: true },
+      }),
+      prisma.centroCosto.findUnique({
+        where: { id: centroCostoId },
+        select: { puedeCrearDepartamentos: true },
+      }),
+    ]);
 
-    const resultado: Record<Tipo, string[]> = { proveedores: [], unidades: [], secciones: [] };
+    const resultado: Record<Tipo, string[]> & { puedeCrearDepartamentos: boolean } = {
+      proveedores: [],
+      unidades: [],
+      secciones: [],
+      puedeCrearDepartamentos: usuario.rol === 'superadmin' || !!centro?.puedeCrearDepartamentos,
+    };
     for (const o of opciones) {
       if (esTipoValido(o.tipo)) resultado[o.tipo].push(o.valor);
     }
@@ -78,10 +95,15 @@ export async function GET(request: Request) {
   }
 }
 
-// POST - Agrega una opción nueva. Para 'secciones' es global (sin centro,
-// cualquier usuario con sesión puede agregar - igual que antes). Para
-// 'proveedores'/'unidades' hace falta centroCostoId, y el usuario debe
-// tener acceso a ese centro.
+// POST - Agrega una opción nueva.
+// - 'proveedores'/'unidades': propios del centro indicado en
+//   centroCostoId - el usuario debe tener acceso a ese centro, y la fila
+//   queda asociada a él.
+// - 'secciones' (departamento): la fila siempre queda GLOBAL
+//   (centroCostoId null en la tabla) pero crear una nueva solo se permite
+//   si el centro ACTIVO desde el que se pide (también centroCostoId en el
+//   body, solo para este chequeo) tiene puedeCrearDepartamentos = true -
+//   o si quien pide es superadmin.
 export async function POST(request: Request) {
   try {
     const token = extractTokenFromHeader(request.headers.get('authorization'));
@@ -101,17 +123,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El valor no puede estar vacío' }, { status: 400 });
     }
 
-    let centroCostoId: string | null = null;
-    if (tipo !== 'secciones') {
-      centroCostoId = typeof body.centroCostoId === 'string' ? body.centroCostoId : null;
-      if (!centroCostoId) {
-        return NextResponse.json({ error: 'Debe indicar el centro de costo' }, { status: 400 });
-      }
-      const tieneAcceso = await usuarioTieneAccesoAlCentro(payload.userId, centroCostoId);
-      if (!tieneAcceso) {
-        return NextResponse.json({ error: 'No tienes acceso a ese centro de costo' }, { status: 403 });
+    const centroCostoBody = typeof body.centroCostoId === 'string' ? body.centroCostoId : null;
+    if (!centroCostoBody) {
+      return NextResponse.json({ error: 'Debe indicar el centro de costo' }, { status: 400 });
+    }
+
+    const { usuario, tieneAcceso } = await obtenerUsuarioYAcceso(payload.userId, centroCostoBody);
+    if (!usuario) {
+      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
+    }
+    if (!tieneAcceso) {
+      return NextResponse.json({ error: 'No tienes acceso a ese centro de costo' }, { status: 403 });
+    }
+
+    if (tipo === 'secciones' && usuario.rol !== 'superadmin') {
+      const centro = await prisma.centroCosto.findUnique({
+        where: { id: centroCostoBody },
+        select: { puedeCrearDepartamentos: true },
+      });
+      if (!centro?.puedeCrearDepartamentos) {
+        return NextResponse.json(
+          { error: 'Esta agencia no tiene permiso para crear nuevos departamentos. Pídele al superadministrador que lo habilite.' },
+          { status: 403 }
+        );
       }
     }
+
+    // 'secciones' siempre se guarda global (sin centro) - el centroCostoId
+    // del body de arriba era solo para el chequeo de permiso.
+    const centroCostoId = tipo === 'secciones' ? null : centroCostoBody;
 
     const opcion = await prisma.opcionCatalogo.create({ data: { tipo, valor, centroCostoId } });
     return NextResponse.json(opcion, { status: 201 });
@@ -149,7 +189,7 @@ export async function DELETE(request: Request) {
       if (!centroCostoId) {
         return NextResponse.json({ error: 'Debe indicar el centro de costo' }, { status: 400 });
       }
-      const tieneAcceso = await usuarioTieneAccesoAlCentro(payload.userId, centroCostoId);
+      const { tieneAcceso } = await obtenerUsuarioYAcceso(payload.userId, centroCostoId);
       if (!tieneAcceso) {
         return NextResponse.json({ error: 'No tienes acceso a ese centro de costo' }, { status: 403 });
       }

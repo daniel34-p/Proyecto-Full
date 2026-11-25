@@ -11,13 +11,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Building2, Loader2, Power, Pencil, Check, X } from 'lucide-react';
+import { Plus, Trash2, Building2, Loader2, Power, Pencil, Check, X, FolderPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface CentroCosto {
   id: string;
   nombre: string;
   activo: boolean;
+  // Si esta agencia puede crear NUEVOS departamentos además de los que ya
+  // tiene (catálogo global de "secciones" - ver puedeCrearDepartamentos en
+  // schema.prisma). Por defecto false para todas.
+  puedeCrearDepartamentos: boolean;
   _count?: {
     usuarios: number;
     productos: number;
@@ -141,6 +145,30 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
       // Avisa al padre (p.ej. la vista de Sucursales) para que refresque
       // su propia lista y el centro desaparezca/reaparezca donde aplique.
       if (onCentroCreado) onCentroCreado();
+    } catch (err: any) {
+      setError(err.message || 'Error al actualizar centro de costo');
+      console.error('Error:', err);
+    }
+  };
+
+  const toggleCrearDepartamentos = async (id: string, puedeCrearDepartamentos: boolean) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/centros-costo/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: JSON.stringify({ puedeCrearDepartamentos: !puedeCrearDepartamentos }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al actualizar centro');
+      }
+
+      await cargarCentros();
     } catch (err: any) {
       setError(err.message || 'Error al actualizar centro de costo');
       console.error('Error:', err);
@@ -356,6 +384,11 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
                               Inactivo
                             </Badge>
                           )}
+                          {centro.puedeCrearDepartamentos && (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+                              Puede crear departamentos
+                            </Badge>
+                          )}
                         </div>
                       )}
                       {centro._count && editandoId !== centro.id && (
@@ -412,6 +445,18 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            onClick={() => toggleCrearDepartamentos(centro.id, centro.puedeCrearDepartamentos)}
+                            title={
+                              centro.puedeCrearDepartamentos
+                                ? 'Quitar permiso para crear nuevos departamentos'
+                                : 'Permitir crear nuevos departamentos'
+                            }
+                          >
+                            <FolderPlus className={`h-4 w-4 ${centro.puedeCrearDepartamentos ? 'text-blue-600' : 'text-gray-400'}`} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={() => eliminarCentro(centro)}
                             disabled={eliminandoId === centro.id}
                             title="Eliminar definitivamente"
@@ -439,6 +484,7 @@ export function CentrosCostoConfig({ isOpen, onClose, onCentroCreado }: CentrosC
               <li>• Un centro desactivado deja de aparecer en la vista de Sucursales y no se puede asignar a nuevos usuarios</li>
               <li>• Los usuarios existentes mantienen su centro aunque esté inactivo</li>
               <li>• Eliminar es permanente y solo se puede hacer si el centro no tiene usuarios ni productos asociados</li>
+              <li>• El ícono de carpeta controla si esa agencia puede crear nuevos departamentos (sección) además de los que ya tiene - por defecto ninguna puede</li>
             </ul>
           </div>
 

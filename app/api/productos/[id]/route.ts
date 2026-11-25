@@ -178,6 +178,12 @@ export async function PUT(
     const anioActual = new Date().getFullYear();
     const cantidadCambio = !isNaN(cantidad) && cantidad !== productoActual.cantidad;
 
+    // "Se acaba de contar" = pasó de 0 a una cantidad positiva. Un
+    // ajuste normal de stock (sumar/restar) sobre un producto que ya
+    // tenía cantidad NO cuenta para esto - ver ultimoConteoAt en
+    // schema.prisma.
+    const esConteoDesdeCero = productoActual.cantidad === 0 && cantidad > 0;
+
     const costoCambio = !!body.costo && body.costo.trim().toUpperCase() !== productoActual.costo;
     const precioVentaCambio = body.precioVenta !== undefined && body.precioVenta !== productoActual.precioVenta;
     const codigoCambio = body.codigo !== undefined && body.codigo !== productoActual.codigo;
@@ -235,6 +241,7 @@ export async function PUT(
         // (admin/asesor), o sin editar si todavía nadie lo había tocado.
         ...(usuario.rol !== 'superadmin' ? { editadoPorId: userId } : {}),
         ...(cantidadCambio ? { anioInventario: anioActual } : {}),
+        ...(esConteoDesdeCero ? { ultimoConteoAt: new Date() } : {}),
         ...(nuevoCodigoBarras ? { codigoBarras: nuevoCodigoBarras } : {}),
         // NO cambiar centroCostoId al editar
       },
